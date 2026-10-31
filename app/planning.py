@@ -5,6 +5,7 @@ from itertools import pairwise
 from math import ceil
 from urllib.parse import urlencode
 
+from app.admissions import admission_issues, confirmation
 from app.names import excluded_ids, must_ids
 from app.schemas import Budget, BudgetItem, DayChoice, DayPlan, Event, Issue, PriceRange, Selection
 from app.weather import itinerary_weather
@@ -126,7 +127,7 @@ def provider_evidence(facts):
     return {eid for city in facts.values() for eid in city.evidence_ids}
 
 
-async def materialize(c, selection, facts, provider, previous=None, reuse_days=None, afternoon_day=None):
+async def materialize(c, selection, facts, provider, previous=None, reuse_days=None, afternoon_day=None, visit_checks=None):
     """Schedule verified POIs, query every leg, then calculate whole-party cost."""
     errors = validate_selection(c, selection, facts)
     known = set(provider.evidence)
@@ -135,7 +136,7 @@ async def materialize(c, selection, facts, provider, previous=None, reuse_days=N
     if errors:
         return [], None, errors
     issues = [Issue(code="opening_hours_unknown", severity="warning",
-                    message="没有已提供开放时段的景点，其开放、预约和无障碍设施仍待核实；游览时长是规划假设"),
+                    message="请查看各景点的入场核验结果；未核实的项目、临时闭馆和无障碍设施仍需出发前确认，游览时长为规划假设"),
               Issue(code="transport_estimate", severity="warning",
                     message="交通耗时为查询时估计，未核验出行日期班次；未选择酒店/车站时使用城市中心衔接假设")]
     if c.accessibility_required:
@@ -176,6 +177,7 @@ async def materialize(c, selection, facts, provider, previous=None, reuse_days=N
     if selection.days[0].city == c.origin:
         position = location(c.origin, "arrival_station_id", position)
     planned_ids = {pid for day in selection.days for pid in day.place_ids}
+    admission_map = {(check.place_id, check.on_date): check for check in visit_checks or []}
 
     for chosen in selection.days:
         local = facts[chosen.city]
@@ -280,6 +282,11 @@ async def materialize(c, selection, facts, provider, previous=None, reuse_days=N
                                                    remaining_days=c.days - chosen.day)
         for pid in ids:
             place = available[pid]
+            entry = admission_map.get((pid, today))
+            if entry:
+                issues.extend(admission_issues(entry, c))
+                if entry.opening_status == "closed" or entry.availability == "sold_out" and not confirmation(c, entry):
+                    continue
             if not await travel(place.location, chosen.city, f"前往 {place.name}"):
                 continue
             visit_duration = (rule.visit_minutes if rule and rule.visit_minutes and
@@ -293,7 +300,22 @@ async def materialize(c, selection, facts, provider, previous=None, reuse_days=N
                 visit_duration = rule.visit_minutes or c.visit_minutes
             opening = next((r for r in c.opening_rules if r.place_id == pid and r.on_date == today), None)
             opening_ev = None
-            if opening:
+            if entry and entry.opening_status == "open":
+                booking = confirmation(c, entry)
+                valid_starts = []
+                for window in entry.windows:
+                    candidate = max(cursor, minutes(window.start), minutes(booking.entry_window.start) if booking else 0)
+                    if (candidate + visit_duration <= min(end_limit, minutes(window.end))
+                            and (entry.last_entry is None or candidate < minutes(entry.last_entry))
+                            and (booking is None or candidate < minutes(booking.entry_window.end))):
+                        valid_starts.append(candidate)
+                if not valid_starts:
+                    issues.append(Issue(code="reservation_window" if booking else "opening_conflict",
+                        message=f"第{chosen.day}天的{place.name}无法同时满足开放、最晚入场和已确认的预约时段，请调整活动顺序或日期。"))
+                    continue
+                if min(valid_starts) > cursor:
+                    pause("wait", min(valid_starts) - cursor, "等待景点开放或预约入场", position)
+            elif opening:
                 opening_ev = provider.record("user", "用户提供开放信息（待自行核实来源）", opening.source)
                 if opening.closed:
                     issues.append(Issue(code="opening_conflict", message=f"{today} {place.name}按提供的信息闭馆，请选择其他日期或地点"))
@@ -306,16 +328,25 @@ async def materialize(c, selection, facts, provider, previous=None, reuse_days=N
             if cursor + visit_duration > end_limit:
                 issues.append(Issue(code="time_window", message=f"第{chosen.day}天的{place.name}游览时长无法放入活动时段"))
                 continue
-            cost = scaled(c.ticket_per_person_visit, c.people)
+            unit_price = c.ticket_per_person_visit
+            ticket_ev = price_ev
+            ticket_note = "门票预算假设/全团；实际票价、开放与预约需核实"
+            if entry and entry.ticket_price is not None:
+                unit_price = PriceRange(low=entry.ticket_price, high=entry.ticket_price)
+                ticket_ev = entry.evidence_id or price_ev
+                label = {"official": "官网规则", "provider": "票务接口", "user": "你自行核对的资料"}.get(entry.authority, "示例资料")
+                ticket_note = f"{label}的{entry.ticket_scope}，按{c.people}人计算；优惠资格和额外项目需另核对。"
+            cost = scaled(unit_price, c.people)
             events.append(Event(kind="visit", start=clock(cursor), end=clock(cursor + visit_duration), title=place.name,
                                 city=chosen.city, place_id=pid, evidence_ids=list(dict.fromkeys([place.evidence_id, price_ev] +
-                                    ([place.indoor_evidence_id] if place.indoor_evidence_id else []) + ([opening_ev] if opening_ev else []))),
+                                    ([place.indoor_evidence_id] if place.indoor_evidence_id else []) + ([opening_ev] if opening_ev else [])
+                                    + ([entry.evidence_id] if entry and entry.evidence_id else []) + [ticket_ev])),
                                 map_url="https://uri.amap.com/marker?" + urlencode({"position": place.location,
                                                                                   "name": place.name, "src": "travel-agent-lab"}),
-                                cost=cost, note="门票预算假设/全团；实际票价、开放与预约需核实",
+                                cost=cost, note=ticket_note,
                                 start_location=place.location, end_location=place.location))
             items.append(BudgetItem(category=f"{place.name} 门票", quantity=c.people, unit="人次",
-                                    unit_price=c.ticket_per_person_visit, total=cost, evidence_id=price_ev,
+                                    unit_price=unit_price, total=cost, evidence_id=ticket_ev,
                                     day=chosen.day, event_start=clock(cursor)))
             cursor += visit_duration
             relaxed_now = rule and rule.pace == "relaxed" and (rule.period == "day" or cursor >= 13 * 60)

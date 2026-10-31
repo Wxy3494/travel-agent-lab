@@ -110,6 +110,20 @@ def create_app(settings=None, service=None):
             raise HTTPException(404, "行程不存在")
         return result
 
+    @api.post("/trips/{trip_id}/verify-visits", response_model=TripResult)
+    async def verify_visits(trip_id: str, request: RevisionRequest):
+        if request.changes or request.instruction or request.adjustment_id or request.target_day:
+            raise HTTPException(422, "重新核验只需提交当前版本号")
+        try:
+            result = await service.refresh_visits(trip_id, request.base_version)
+        except VersionConflict as exc:
+            raise HTTPException(409, str(exc)) from None
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from None
+        if result is None:
+            raise HTTPException(404, "行程不存在")
+        return result
+
     @api.get("/trips/{trip_id}/export", response_class=PlainTextResponse)
     def export(trip_id: str, version: int | None = Query(default=None, ge=1)):
         result = service.repository.get(trip_id, version)

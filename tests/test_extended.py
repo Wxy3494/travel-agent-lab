@@ -1,6 +1,6 @@
 """Behavioral acceptance for the completed MVP, using isolated databases and fixed tools."""
 import json
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 
 import httpx
 import pytest
@@ -10,6 +10,7 @@ from autogen_ext.models.replay import ReplayChatCompletionClient
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
+from app.admissions import AdmissionService
 from app.agents import AutoGenAgents
 from app.audit import audit_result
 from app.config import Settings
@@ -286,6 +287,13 @@ async def test_live_adapter_and_autogen_full_pipeline_with_mock_http(tmp_path, c
 
     def respond(request):
         path = request.url.path
+        if path == "/visit-check":
+            params, now = request.url.params, datetime.now(UTC)
+            return httpx.Response(200, json={"place_id": params["place_id"], "place_name": params["name"],
+                "city": params["city"], "on_date": params["date"], "opening_status": "open",
+                "windows": [{"start": "09:00", "end": "18:00"}], "reservation_required": False,
+                "ticket_price": 0, "source_urls": ["https://venue.example/guide"],
+                "checked_at": now.isoformat(), "expires_at": (now + timedelta(hours=1)).isoformat()})
         if "geocode" in path:
             body = {"geocodes": [{"location": "113.26,23.12", "citycode": "020", "adcode": "440100"}]}
         elif "weather" in path:
@@ -305,11 +313,13 @@ async def test_live_adapter_and_autogen_full_pipeline_with_mock_http(tmp_path, c
                           {"day": 2, "city": "广州", "place_ids": ["amap-park"], "reason": "固定回放"}]}
     model = ReplayChatCompletionClient([call, '{"status":"collected"}', json.dumps(selection), '{"approved":true,"issues":[]}'],
         model_info={"vision": False, "function_calling": True, "json_output": True, "family": "unknown", "structured_output": False})
-    settings = Settings(mode="live", db_path=str(tmp_path / "mock-live.db"))
+    settings = Settings(mode="live", db_path=str(tmp_path / "mock-live.db"), visit_provider="custom",
+                        visit_api_url="https://venue.example/visit-check")
     async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
         service = TravelService(settings, Repository(settings.db_path),
             provider_factory=lambda: AmapProvider("test-key-never-persist", client=client),
             agents_factory=lambda s, t: AutoGenAgents(s, t, client=model))
+        service.admission_service = AdmissionService(settings, client)
         c = Constraints.model_validate({**constraints.model_dump(), "anchors": {"广州": {"hotel_id": "amap-hotel"}}})
         r = await service.create(TripRequest(constraints=c))
         assert r.status == "ready", r.issues

@@ -14,7 +14,14 @@ from dotenv import load_dotenv
 from pydantic import ValidationError
 
 from app.config import client_read_timeout
-from app.presentation import day_description, hotel_details, issue_message, plain_text, weather_line
+from app.presentation import (
+    admission_summary,
+    day_description,
+    hotel_details,
+    issue_message,
+    plain_text,
+    weather_line,
+)
 from app.render import escape, render_markdown
 from app.schemas import MAX_TRIP_DAYS, Constraints, TripResult
 from app.service import blocked_input
@@ -90,6 +97,8 @@ def constraint_text(field, value):
         return "；".join(f"第{day}天：已指定{len(ids)}处活动（详见下方日程差异）" for day, ids in value.items())
     if field == "opening_rules":
         return "；".join(f"{r['on_date']}：{'闭馆' if r['closed'] else (r['start'][:5] + '～' + r['end'][:5])}；{r['source']}" for r in value)
+    if field == "reservations":
+        return "；".join(f"{r['on_date']}：你确认已预约{r['people']}人，入场{r['entry_window']['start'][:5]}～{r['entry_window']['end'][:5]}（未验证凭证）" for r in value)
     if field == "indoor_sources":
         return "；".join(value.values())
     if isinstance(value, dict) and "low" in value:
@@ -160,9 +169,11 @@ def show_trip(trip, latest):
         st.write(plain_text(q))
     if trip["status"] == "needs_input":
         st.caption("请在上方补充缺少的信息，再生成行程；也可以用下方文字输入框补充。")
-    for issue in trip["issues"]:
-        if issue["severity"] == "error":
-            st.warning(issue_message(issue))
+    errors = [issue for issue in trip["issues"] if issue["severity"] == "error"]
+    for issue in errors[:8]:
+        st.warning(issue_message(issue))
+    if len(errors) > 8:
+        st.caption(f"另有{len(errors) - 8}条待处理提示，详见景点入场核验和风险与来源。")
     c = trip["constraints"]
     if trip.get("name_normalizations") or c.get("bindings"):
         with st.expander("地点名称确认记录"):
@@ -200,6 +211,9 @@ def show_trip(trip, latest):
                         title = f"[{title}]({e['map_url']})"
                     st.markdown(f"**{e['start']}–{e['end']}**　{title}")
                     st.caption(f"¥{e['cost']['low']:.0f}–{e['cost']['high']:.0f} / 全团 · {plain_text(e['note'])}")
+                    check = next((v for v in trip.get("visit_checks", []) if v["place_id"] == e.get("place_id") and v["on_date"] == day["date"]), None)
+                    if check:
+                        st.caption("入场核验：" + admission_summary(check, c))
                     for segment in e.get("route_segments", []):
                         st.caption(plain_text(segment))
                 if not day.get("weather_details"):
@@ -371,6 +385,7 @@ if submit:
         advanced = {key: st.session_state.trip["constraints"].get(key, {}) for key in
                     ["anchors", "day_place_ids", "place_choices", "indoor_sources"]} if st.session_state.trip else {}
         advanced["opening_rules"] = st.session_state.trip["constraints"].get("opening_rules", []) if st.session_state.trip else []
+        advanced["reservations"] = st.session_state.trip["constraints"].get("reservations", []) if st.session_state.trip else []
         rules = [r for r in previous_constraints.get("day_rules", []) if days and r["day"] <= days]
         constraints = Constraints(origin=origin.strip() or None, cities=split_names(destinations), start_date=start,
             days=days, people=people, budget=budget, interests=split_names(interests), must_visit=split_names(must),
@@ -407,6 +422,66 @@ if trip:
     st.caption("天气自动匹配每天预计所在城市，仅展示今天起七天内已发布的预报；跨城当天分别显示出发和抵达城市。")
     with st.container(border=True):
         show_trip(trip, latest=True)
+    if trip.get("visit_checks") or trip.get("days"):
+        with st.expander("景点入场核验与预约确认"):
+            st.caption("常规开放规则不保证当天无临时闭馆；免费景点也可能要预约。这里只记录你确认的日期、人数和时段，不填写身份证或订单号。")
+            if not trip.get("visit_checks"):
+                st.info("该历史版本尚未进行景点入场核验，请点击重新核验。")
+            selected_check = st.selectbox("选择要核对的景点与日期", trip.get("visit_checks", []), index=None,
+                format_func=lambda v: f"{v['on_date']} · {v['city']} · {v['place_name']}", key="visit_check_choice")
+            if st.button("重新核验景点入场信息"):
+                accept_trip(request("POST", f"/trips/{trip['id']}/verify-visits", {"base_version": trip["version"]}))
+            st.caption("重新核验沿用原景点并重新算路，不调用语言模型；会保存新版本。")
+            if selected_check:
+                v = selected_check
+                st.write(admission_summary(v, trip["constraints"]))
+                st.caption({"official": "来源：景点官网", "provider": "来源：票务接口", "user": "来源：你自行核对的信息",
+                    "fixture": "来源：离线演示", "unknown": "尚未取得可用资料"}[v["authority"]])
+                if v.get("checked_at"):
+                    st.caption("资料核对时间：" + v["checked_at"] + "；超过24小时需重新核对。")
+                st.write(v.get("note", ""))
+                for source_url in v.get("source_urls", []):
+                    st.link_button("查看资料原文", source_url)
+                if v.get("booking_url"):
+                    st.link_button("查看预约说明", v["booking_url"])
+                with st.form("reservation_confirmation"):
+                    st.write("确认你已在官方渠道完成预约")
+                    a, b = st.columns(2)
+                    booked_start = a.time_input("已预约的入场时段开始", value=time(9))
+                    booked_end = b.time_input("已预约的入场时段结束", value=time(12))
+                    booked = st.checkbox(f"我已完成{v['on_date']}、{trip['constraints']['people']}人的预约")
+                    if st.form_submit_button("保存预约确认并重新检查"):
+                        if not booked or booked_start >= booked_end:
+                            st.warning("请先完成实际预约，并填写正确的入场时段后再确认。")
+                        else:
+                            confirmations = [r for r in trip["constraints"].get("reservations", [])
+                                if not (r["place_id"] == v["place_id"] and r["on_date"] == v["on_date"])]
+                            confirmations.append({"place_id": v["place_id"], "on_date": v["on_date"],
+                                "people": trip["constraints"]["people"], "entry_window": {"start": booked_start.isoformat(), "end": booked_end.isoformat()}})
+                            revise_choice(trip, {"reservations": confirmations})
+                with st.expander("补充你自行核对的入场资料"), st.form("manual_visit_information"):
+                        st.caption("按官网或电话核对结果填写；这些内容会标记为你提供的信息。未填的项目继续显示待核实。")
+                        is_closed = st.checkbox("该日期闭馆或暂停开放")
+                        a, b = st.columns(2)
+                        manual_start = a.time_input("核对到的开放开始", value=None)
+                        manual_end = b.time_input("核对到的闭馆时间", value=None)
+                        last_entry = st.time_input("核对到的停止入场时间（可留空）", value=None)
+                        reservation = st.selectbox("核对到的预约要求", ["未核对", "需要提前预约", "无需提前预约"])
+                        ticket = st.number_input("成人基础门票 / 元（免费填0）", min_value=0.0, value=None)
+                        source_url = st.text_input("资料原文链接（可选）")
+                        source_note = st.text_input("核对依据", placeholder="例如官网参观须知，或今天电话咨询的结果", max_chars=300)
+                        if st.form_submit_button("保存入场资料并重新检查"):
+                            if not source_note.strip() or not is_closed and (manual_start is None or manual_end is None or manual_start >= manual_end):
+                                st.warning("请填写核对依据；开放时还需填写同一天内有效的开放时段。")
+                            else:
+                                rules = [r for r in trip["constraints"].get("opening_rules", []) if not (r["place_id"] == v["place_id"] and r["on_date"] == v["on_date"])]
+                                rules.append({"place_id": v["place_id"], "on_date": v["on_date"], "closed": is_closed,
+                                    "start": manual_start.isoformat() if manual_start else None, "end": manual_end.isoformat() if manual_end else None,
+                                    "last_entry": last_entry.isoformat() if last_entry else None, "ticket_price": ticket,
+                                    "reservation_required": {"未核对": None, "需要提前预约": True, "无需提前预约": False}[reservation],
+                                    "source": source_note.strip(), "source_url": source_url.strip(),
+                                    "checked_at": datetime.now(ZoneInfo("Asia/Shanghai")).isoformat()})
+                                revise_choice(trip, {"opening_rules": rules})
     if trip.get("revision_scope"):
         st.caption(plain_text(trip["revision_scope"]["explanation"]))
     if trip.get("clarifications"):
@@ -456,7 +531,7 @@ if trip:
                     "hotel_per_room_night": "每间每晚住宿预算", "food_per_person_day": "每人每天餐饮预算",
                     "ticket_per_person_visit": "每人每处门票预算", "pricing_note": "费用说明", "arrival_time": "首日到达",
                     "departure_time": "末日离开", "daily_start": "每日开始", "daily_end": "每日结束", "visit_minutes": "每处游览分钟数",
-                    "day_rules": "分日时段与节奏", "opening_rules": "开放与闭馆说明", "place_choices": "候选确认",
+                    "day_rules": "分日时段与节奏", "opening_rules": "开放与闭馆说明", "reservations": "你确认的预约", "place_choices": "候选确认",
                     "bindings": "地点名称映射", "anchors": "酒店与车站位置", "day_place_ids": "指定活动", "optimize_routes": "路线顺序比较",
                     "indoor_sources": "室内属性依据"}
                 labels.update(lodging_addresses="酒店或住宿地址", daily_end_scope="结束时间含义")

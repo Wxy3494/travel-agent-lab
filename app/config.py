@@ -38,11 +38,17 @@ class Settings:
     weather_provider: str = "amap"
     weather_api_url: str = ""
     weather_api_key: str = ""
+    visit_provider: str = "official"
+    visit_api_url: str = ""
+    visit_api_key: str = ""
+    max_visit_calls: int = 60
 
     def __post_init__(self):
         if self.mode not in {"demo", "live"}:
             raise ValueError("TRAVEL_MODE must be demo or live")
         planning_timeout(self.timeout)
+        if self.visit_provider not in {"official", "custom"} or not 1 <= self.max_visit_calls <= 100:
+            raise ValueError("Invalid visitor verification provider or call limit")
         if not 0 <= self.max_repairs <= 2 or not 1 <= self.max_tool_calls <= 500:
             raise ValueError("Invalid execution limits")
         if not 1 <= self.max_model_calls <= 50:
@@ -69,6 +75,10 @@ class Settings:
             weather_provider=os.getenv("WEATHER_PROVIDER", "amap"),
             weather_api_url=os.getenv("WEATHER_API_URL", ""),
             weather_api_key=os.getenv("WEATHER_API_KEY", ""),
+            visit_provider=os.getenv("VISIT_PROVIDER", "official"),
+            visit_api_url=os.getenv("VISIT_API_URL", ""),
+            visit_api_key=os.getenv("VISIT_API_KEY", ""),
+            max_visit_calls=int(os.getenv("VISIT_MAX_CALLS", "60")),
         )
         if result.mode not in {"demo", "live"}:
             raise ValueError("TRAVEL_MODE must be demo or live")

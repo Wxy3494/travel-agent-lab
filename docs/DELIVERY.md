@@ -7,7 +7,7 @@
 - `artifacts/release/travel-agent-lab-source.zip`：源码、测试、配置样例、文档、CSS、背景JPG。
 - `artifacts/release/manifest.json`：ZIP的SHA256、每个文件哈希、最终Git提交和工作区状态。
 - `artifacts/release/history.bundle`：仅公开源码的本地Git历史；ZIP刻意不带`.git`。
-- `artifacts/release/release-check.json`、`wheel-check.json`：本轮发布包及wheel资源校验结果；原始本地测试证据位于`artifacts/fixes-20261031/`。
+- `artifacts/release/release-check.json`、`wheel-check.json`：本轮发布包及wheel资源校验结果；当前原始测试证据位于`artifacts/admissions-20261031/`，上一轮六项修复证据保留在`artifacts/fixes-20261031/`。
 
 密钥、SQLite、运行日志、个人行程、虚拟环境和原始评测结果不纳入源码ZIP或Git历史。没有上传、推送或发布。尚未选定开源许可证；本地交付不意味着授予任意开源使用权。
 
@@ -39,4 +39,4 @@ git bundle verify artifacts/release/history.bundle
 
 接收方需要完整历史时，在空的新目标目录使用`git clone history.bundle 项目目录`，而不是把另一份源码覆盖在当前目录上。要验证包的身份，应比较发送方提供的ZIP SHA256；清单的完整性校验不等于第三方数字签名。
 
-修改源码后先重新测试，再运行`python -m scripts.record_acceptance --evidence-dir artifacts/fixes-20261031`更新摘要，提交修复后重新打包。脚本将检查回归、规范和依赖报告，并记录源码哈希；不要手改测试数量来冒充通过。历史快照保持原日期，新包使用新的清单与Git提交。
+修改源码后先重新测试，再运行`python -m scripts.record_acceptance --evidence-dir artifacts/admissions-20261031`更新摘要，提交修复后重新打包。脚本将检查回归、规范和依赖报告，并记录源码哈希；不要手改测试数量来冒充通过。历史快照保持原日期，新包使用新的清单与Git提交。

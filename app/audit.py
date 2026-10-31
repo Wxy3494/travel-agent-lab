@@ -2,7 +2,7 @@
 
 Used at the service boundary AND by evaluations; failure never becomes ready.
 """
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from math import ceil
 
@@ -70,6 +70,44 @@ def audit_result(result):
                 pids.append(event.place_id)
                 if event.city != day.city or not event.place_id:
                     problems.add("place_city")
+                check = next((v for v in result.visit_checks if v.place_id == event.place_id and v.on_date == day.date and v.city == day.city), None)
+                if result.admission_verification and check is None:
+                    problems.add("admission_unverified")
+                if check and check.enforced:
+                    if check.opening_status != "open":
+                        problems.add("opening_conflict" if check.opening_status == "closed" else "admission_unverified")
+                    if (check.authority == "unknown" or not check.checked_at or not check.expires_at
+                            or check.checked_at < datetime.now(UTC) - timedelta(hours=24)
+                            or check.checked_at > datetime.now(UTC) + timedelta(minutes=5) or check.expires_at < datetime.now(UTC)
+                            or check.expires_at > check.checked_at + timedelta(hours=24)):
+                        problems.add("admission_unverified")
+                    if check.authority != "unknown" and (check.evidence_id not in known or check.evidence_id not in event.evidence_ids):
+                        problems.add("source_missing")
+                    if start is not None and end is not None and check.opening_status == "open":
+                        if not any(start >= w.start.hour * 60 + w.start.minute and end <= w.end.hour * 60 + w.end.minute for w in check.windows):
+                            problems.add("opening_conflict")
+                        if check.last_entry and start >= check.last_entry.hour * 60 + check.last_entry.minute:
+                            problems.add("opening_conflict")
+                    booked = next((r for r in c.reservations if r.place_id == event.place_id and r.on_date == day.date and r.people == c.people), None)
+                    if check.reservation_required is None:
+                        problems.add("admission_unverified")
+                    elif check.reservation_required and not booked:
+                        problems.add("reservation_required")
+                    if booked and start is not None and not (booked.entry_window.start.hour * 60 + booked.entry_window.start.minute <= start
+                        < booked.entry_window.end.hour * 60 + booked.entry_window.end.minute):
+                        problems.add("reservation_window")
+                    if check.availability == "sold_out" and not booked:
+                        problems.add("reservation_required")
+                    if check.ticket_price is None:
+                        problems.add("ticket_unverified")
+                    elif any(abs(getattr(event.cost, bound) - check.ticket_price * c.people) > .005 for bound in ("low", "high")):
+                        problems.add("ticket_price")
+                    if check.ticket_price is not None and result.budget:
+                        rows = [i for i in result.budget.items if i.day == day.day and i.event_start == event.start
+                                and i.category == event.title + " 门票"]
+                        if (len(rows) != 1 or rows[0].quantity != c.people or rows[0].evidence_id != check.evidence_id
+                                or any(abs(getattr(rows[0].unit_price, bound) - check.ticket_price) > .005 for bound in ("low", "high"))):
+                            problems.add("ticket_price")
                 opening = next((r for r in c.opening_rules if r.place_id == event.place_id and r.on_date == day.date), None)
                 if opening and start is not None and end is not None and (opening.closed or start < opening.start.hour * 60 + opening.start.minute or
                                 end > opening.end.hour * 60 + opening.end.minute):

@@ -41,10 +41,17 @@ def record(evidence_dir):
             data = json.loads(path.read_text(encoding="utf-8"))
             history.append({"scope": scope, "record": name, "record_sha256": digest(path),
                             "recorded_passed": bool(data.get("passed")), "retested_now": False})
+    official_path = evidence_dir / "official-pages.json"
+    official = json.loads(official_path.read_text(encoding="utf-8")) if official_path.is_file() else None
+    official_notes = "；".join(row["place_name"] + ("取得规则" if row["authority"] == "official" else "未取得规则，保留待核实")
+                              for row in official["checks"]) if official else "本轮未查询公开官网"
     snapshot = {"checked_at": datetime.now(ZoneInfo("Asia/Shanghai")).isoformat(),
         "pytest": {**counts, "report_sha256": digest(evidence_dir / "pytest.xml")},
         "ruff": "passed", "pip_check": "passed", "offline": evaluations,
         "historical_live": history, "current_live_end_to_end": "not_rerun_no_paid_model_or_map_calls",
+        "official_admission_pages": {"verified": official["verified"], "total": official["total"],
+            "http_calls": official["http_calls"], "report_sha256": digest(official_path),
+            "scope": official["scope"]} if official else "not_run",
         "current_ui": "AppTest_including_isolated_archive_extraction; no_new_browser_visual_check",
         "delivery": {"type": "source_only_using_existing_dependencies", "fresh_machine_install": "not_run",
                      "license": "not_selected", "published": False},
@@ -63,11 +70,14 @@ def record(evidence_dir):
 | 离线场景 | v3 {evaluations['v3']['passed']}/{evaluations['v3']['total']}；v2 {evaluations['v2']['passed']}/{evaluations['v2']['total']} | 模型调用为零；已知回归，非盲测 |
 | 发布包界面 | 独立进程解压后运行 AppTest，CSS 加载、JPG 嵌入通过 | 复用本机依赖，未在全新机器安装，未重新做浏览器外观检查 |
 | 真实接口历史 | 2026-10-15 广州两日生成、预算修改、历史及导出；2026-10-16 武汉酒店地址定位有通过记录 | 当前源码有后续修改，本轮未重新发送模型或地图请求 |
+| 官网入场资料 | {str(official['verified']) + '/' + str(official['total']) + ' 个适配场馆实际取得规则' if official else '本轮未查询'} | {official_notes}。常规规则不代表临时公告、实时余量或预约成功 |
 | 真实全覆盖 | 未通过完整验收 | 其他路线、实时房价/房态/余票、七天天气厂商、30天真实规划仍未验收 |
 | Docker、云端 CI | 本轮未运行 | 配置不等于运行证据 |
 | Git 与外发 | 本地基线和修复提交；ZIP 清单记录最终提交与各文件 SHA256 | 无外部推送；未选开源许可证；不能伪称已有远端历史或云端 CI 成绩 |
 
-本轮修复：发布包与 wheel 纳入 CSS/JPG；文字和结构化日序在输入阶段拒绝越界；跨城停留时间按必去地点容量调整后再判断不可满足；网页读取后端超时上限并增加30秒返回缓冲；“增加一天”上限统一为30天。
+本轮新增：按具体场馆/日期核对入场规则、闭馆改期/可选替换、开放与停止入场时段、预约确认、基础票价入账和独立审计；新增只读票务接口契约、无模型刷新、资料过期降级和用户资料来源说明。内置两个官网适配，非全国覆盖；详见 [景点入场核验](ADMISSION_VERIFICATION.md)。此前六项修复继续纳入完整回归。
+
+浏览器外观检查未完成：Computer Use 辅助程序反复在 sandbox setup 阶段退出；新增面板和交互通过 AppTest，不把它写成截图验收。
 
 证据目录：`{evidence_dir.relative_to(ROOT).as_posix() if evidence_dir.is_absolute() else evidence_dir.as_posix()}`。源码和配置哈希保存在机器摘要中；文档与摘要自身不纳入该集合以避免自引用，发布包清单另外覆盖它们。
 

@@ -11,6 +11,11 @@ AUDIT_MESSAGES = {
     "source_missing": "部分地点、路线或费用缺少可核对的来源",
     "place_city": "有景点与当天所在城市不符，请重新选择",
     "opening_conflict": "有景点与已填写的开放时间冲突",
+    "admission_unverified": "部分景点的入场资料尚未核实，请先完成景点入场核验",
+    "reservation_required": "有景点需要预约或已约满，请确认预约或调整到访日期",
+    "reservation_window": "有景点的预计入场时间不在你确认的预约时段内",
+    "ticket_unverified": "部分门票价格尚未核实，目前费用仍是预算参考",
+    "ticket_price": "门票费用与已核对的票价或人数不一致",
     "visit_duration": "景点游览时长与填写的要求不一致",
     "travel_minutes": "当日交通总时长与分段交通安排不一致",
     "duplicate_place": "行程重复安排了同一个景点",
@@ -27,6 +32,7 @@ AUDIT_MESSAGES = {
 
 def plain_text(value):
     text = str(value or "")
+    text = re.sub(r"；页面SHA256：[0-9a-f /]+", "", text)
     text = re.sub(r"(?:结果审计未通过[：:]\s*|audit_)([a-z_]+)",
                   lambda m: AUDIT_MESSAGES.get(m[1], "行程检查发现未解决的问题"), text)
     replacements = {
@@ -98,5 +104,35 @@ def weather_line(value):
     if data.get("is_demo"):
         text += "（演示）"
     return text
+
+
+def admission_summary(value, constraints):
+    from datetime import UTC, datetime, timedelta
+
+    item = value if isinstance(value, dict) else value.model_dump(mode="json")
+    c = constraints if isinstance(constraints, dict) else constraints.model_dump(mode="json")
+    if not item.get("enforced", True):
+        return "离线演示，未作真实入场核验"
+    now = datetime.now(UTC)
+    expires = datetime.fromisoformat(item["expires_at"]) if item.get("expires_at") else None
+    if expires and expires < now:
+        return "入场资料已过期，请重新核验；历史价格和余量不能作为出发依据"
+    opening = {"unknown": "开放时间待核实", "closed": "该日闭馆或常规不开放", "open": "常规开放时段已核对"}[item["opening_status"]]
+    if item["opening_status"] == "open":
+        opening += "：" + "、".join(w["start"][:5] + "–" + w["end"][:5] for w in item["windows"])
+    if item.get("last_entry"):
+        opening += "；" + item["last_entry"][:5] + "停止入场"
+    confirmed = any(r["place_id"] == item["place_id"] and r["on_date"] == item["on_date"]
+        and r["people"] == c.get("people") for r in c.get("reservations", []))
+    booking = ("你已确认预约（未验证凭证）" if confirmed else "需预约，尚未确认" if item["reservation_required"] else
+               "无需提前预约" if item["reservation_required"] is False else "是否预约待核实")
+    stamp = datetime.fromisoformat(item["availability_checked_at"]) if item.get("availability_checked_at") else None
+    availability = item["availability"] if stamp and now - timedelta(minutes=10) <= stamp <= now + timedelta(minutes=5) else "unknown"
+    if availability == "sold_out" and not confirmed:
+        booking += "；接口显示已约满"
+    elif item["reservation_required"] and not confirmed:
+        booking += "；实时余量未知" if availability == "unknown" else "；查询时可约，不代表已约到"
+    price = "票价待核实，仍按预算计算" if item["ticket_price"] is None else f"基础票参考 ¥{item['ticket_price']:g}/人"
+    return opening + " · " + booking + " · " + price
 
 

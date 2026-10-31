@@ -8,7 +8,8 @@ from zoneinfo import ZoneInfo
 from pydantic import ValidationError
 
 from app.adjustments import suggestions
-from app.agents import AutoGenAgents, DemoAgents
+from app.admissions import AdmissionService
+from app.agents import AdmissionRefreshAgents, AutoGenAgents, DemoAgents
 from app.audit import audit_result
 from app.day_input import MAX_TRIP_DAYS, day_references
 from app.names import normalize_cities, resolve_names
@@ -31,6 +32,7 @@ class TravelService:
     def __init__(self, settings, repository, provider_factory=None, agents_factory=None):
         self.settings, self.repository = settings, repository
         self.weather_service = WeatherService(settings)
+        self.admission_service = AdmissionService(settings)
         self.provider_factory = provider_factory or (
             (lambda: FixtureProvider(settings.max_tool_calls)) if settings.mode == "demo" else
             (lambda: AmapProvider(settings.amap_key, settings.max_tool_calls)))
@@ -52,11 +54,36 @@ class TravelService:
             revision.changes = adjustment.changes
         updated = Constraints.model_validate({**previous.constraints.model_dump(mode="json"), **revision.changes})
         request = TripRequest(prompt=revision.instruction, constraints=updated, strategy=previous.strategy)
+        refresh_only = bool(revision.changes) and set(revision.changes) <= {"reservations", "opening_rules"} and not revision.instruction
         return await self.execute(request, trip_id, previous.version + 1, previous.version,
-                                  is_revision=True, explicit_changes=revision.changes, previous=previous, revision=revision)
+                                  is_revision=True, explicit_changes=revision.changes, previous=previous, revision=revision,
+                                  saved_selection=self.saved_selection(previous) if refresh_only else None)
+
+    def saved_selection(self, previous):
+        if previous.constraints.missing() or not previous.days:
+            raise ValueError("请先完成基本信息并生成行程，再重新核验入场资料")
+        selected = next((t["days"] for t in reversed(previous.trace) if t.get("step") == "selection"), {})
+        schedule = allocate_days(previous.constraints)
+        if not schedule or not previous.days:
+            raise ValueError("请先完成基本信息并生成行程，再重新核验入场资料")
+        by_day = {d.day: d for d in previous.days}
+        return Selection(days=[DayChoice(day=index + 1, city=by_day[index + 1].city if index + 1 in by_day else city,
+            place_ids=selected.get(str(index + 1), [e.place_id for e in by_day[index + 1].events if e.kind == "visit"] if index + 1 in by_day else []),
+            reason="沿用已选景点，重新核对入场规则和路线。") for index, city in enumerate(schedule)])
+
+    async def refresh_visits(self, trip_id, version):
+        previous = self.repository.get(trip_id)
+        if previous is None:
+            return None
+        if previous.version != version:
+            raise VersionConflict("请使用最新行程版本重新核验")
+        request = TripRequest(constraints=previous.constraints, strategy=previous.strategy)
+        self.admission_service.pages.clear()
+        return await self.execute(request, trip_id, previous.version + 1, previous.version,
+            is_revision=True, previous=previous, saved_selection=self.saved_selection(previous))
 
     async def execute(self, request, trip_id, version, expected, is_revision=False, explicit_changes=None,
-                      previous=None, revision=None):
+                      previous=None, revision=None, saved_selection=None):
         start = time.perf_counter()
         result = TripResult(id=trip_id, version=version, mode=self.settings.mode,
                             strategy=request.strategy, status="failed", constraints=request.constraints)
@@ -67,11 +94,15 @@ class TravelService:
                 result.issues = [Issue(code="unsupported_action", message="系统只提供规划，不能代为交易或保存身份证、银行卡和密码；请删除敏感信息")]
             else:
                 async with asyncio.timeout(self.settings.timeout):
-                    agents = self.agents_factory(self.settings, result.trace)
+                    agents = (AdmissionRefreshAgents(saved_selection, result.trace) if saved_selection is not None else
+                              self.agents_factory(self.settings, result.trace))
                     try:
                         c = await agents.extract(request.prompt, request.constraints, revision=is_revision)
                         if is_revision and explicit_changes:
                             c = Constraints.model_validate({**c.model_dump(mode="json"), **explicit_changes})
+                        # Only explicit form/API declarations can create confirmations or checked facts.
+                        c.reservations = request.constraints.reservations
+                        c.opening_rules = request.constraints.opening_rules
                         submitted = c
                         c = normalize_cities(c)
                     except ValidationError:
@@ -155,17 +186,28 @@ class TravelService:
                                     facts[city].evidence_ids.extend([p.evidence_id, ev])
                                     break
                         reuse_days, afternoon_day = revision_scope(result, previous, revision, request.prompt)
+                        if saved_selection is not None:
+                            reuse_days, afternoon_day = set(), None
                         if reuse_days or afternoon_day:
                             provider.evidence.update({ev.id: ev for ev in previous.evidence})
                         feedback = []
                         last_errors = None
+                        visit_cache, visit_budget = {}, [0]
+                        result.admission_verification = True
                         for attempt in range(self.settings.max_repairs + 1):
                             selection = await agents.select(c, facts, feedback)
                             selection = apply_day_choices(selection, c, previous, reuse_days, afternoon_day)
+                            selection, result.visit_checks, admission_notes = await self.admission_service.arrange(
+                                c, selection, facts, provider, visit_cache, visit_budget)
+                            if reuse_days and any(check.enforced for check in result.visit_checks):
+                                reuse_days, afternoon_day = set(), None
+                                result.revision_scope = {"expanded": True, "preserved_days": [],
+                                    "explanation": "入场资料已重新核对，需要复核全部到访日期和费用，原有需求保持不变。"}
                             result.trace.append({"step": "selection", "days": {str(d.day): [pid for pid in d.place_ids
                                 if d.city in facts and any(p.id == pid for p in facts[d.city].places)] for d in selection.days}})
                             days, budget, checks = await materialize(c, selection, facts, provider, previous,
-                                                                   reuse_days, afternoon_day)
+                                                                   reuse_days, afternoon_day, result.visit_checks)
+                            checks += admission_notes
                             review = (await agents.review(c, days, checks) if request.strategy == "multi" else
                                       Review(approved=True))
                             result.days, result.budget, result.issues = days, budget, checks
@@ -188,10 +230,13 @@ class TravelService:
                             result.status = "needs_review"
                             feedback = [i.message for i in errors]
                             fingerprint = tuple((i.code, i.message) for i in errors)
-                            terminal = {"over_budget", "uncertain", "accessibility_unverified", "day_too_long", "time_window"}
+                            terminal = {"over_budget", "uncertain", "accessibility_unverified", "day_too_long", "time_window",
+                                "admission_unverified", "ticket_unverified", "reservation_required", "reservation_window", "opening_conflict"}
                             codes = {i.code.removeprefix("audit_") for i in errors}
                             time_failure = bool(codes & {"time_window", "day_too_long"})
-                            if codes <= terminal or time_failure and codes <= terminal | {"missing_must_visit"} or fingerprint == last_errors:
+                            admission_failure = bool(codes & {"admission_unverified", "ticket_unverified", "reservation_required", "reservation_window", "opening_conflict"})
+                            if (codes <= terminal or (time_failure or admission_failure) and codes <= terminal | {"missing_must_visit"}
+                                    or fingerprint == last_errors):
                                 break
                             last_errors = fingerprint
                         result.adjustments = suggestions(result)

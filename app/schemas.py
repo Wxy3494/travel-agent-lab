@@ -54,11 +54,71 @@ class OpeningRule(Model):
     start: time | None = None
     end: time | None = None
     source: str = Field(min_length=1, max_length=300)
+    source_url: str = Field(default="", max_length=1000)
+    last_entry: time | None = None
+    reservation_required: bool | None = None
+    ticket_price: float | None = Field(default=None, ge=0, le=1_000_000)
+    checked_at: datetime | None = None
 
     @model_validator(mode="after")
     def complete(self):
         if not self.closed and (not self.start or not self.end or self.start >= self.end):
             raise ValueError("开放时段必须有同一天的开始与结束时间")
+        if self.checked_at and self.checked_at.tzinfo is None:
+            raise ValueError("核对时间须带时区")
+        return self
+
+
+class EntryWindow(Model):
+    start: time
+    end: time
+
+    @model_validator(mode="after")
+    def ordered(self):
+        if self.start >= self.end:
+            raise ValueError("入场时段须在同一天内，开始早于结束")
+        return self
+
+
+class ReservationConfirmation(Model):
+    place_id: str = Field(min_length=1, max_length=100)
+    on_date: date
+    entry_window: EntryWindow
+    people: int = Field(ge=1, le=10)
+
+
+class VisitCheck(Model):
+    place_id: str
+    place_name: str
+    city: str
+    on_date: date
+    opening_status: Literal["open", "closed", "unknown"] = "unknown"
+    windows: list[EntryWindow] = Field(default_factory=list, max_length=8)
+    last_entry: time | None = None
+    reservation_required: bool | None = None
+    booking_url: str = ""
+    booking_days_ahead: int | None = Field(default=None, ge=0, le=365)
+    same_day_booking: bool | None = None
+    availability: Literal["available", "sold_out", "unknown"] = "unknown"
+    availability_checked_at: datetime | None = None
+    ticket_price: float | None = Field(default=None, ge=0, le=1_000_000)
+    ticket_scope: str = Field(default="成人基础门票；不含特展、讲解和优惠", max_length=200)
+    authority: Literal["official", "provider", "user", "fixture", "unknown"] = "unknown"
+    scope: Literal["regular", "date_specific"] = "regular"
+    source_urls: list[str] = Field(default_factory=list, max_length=8)
+    checked_at: datetime | None = None
+    expires_at: datetime | None = None
+    evidence_id: str = ""
+    note: str = Field(default="", max_length=800)
+    enforced: bool = True
+
+    @model_validator(mode="after")
+    def complete(self):
+        if self.opening_status == "open" and not self.windows:
+            raise ValueError("已知开放必须有明确时段")
+        for stamp in (self.checked_at, self.expires_at, self.availability_checked_at):
+            if stamp and stamp.tzinfo is None:
+                raise ValueError("核验时间必须带时区")
         return self
 
 
@@ -105,6 +165,7 @@ class Constraints(Model):
     visit_minutes: int = Field(default=90, ge=30, le=240)
     day_rules: list[DayRule] = Field(default_factory=list, max_length=MAX_TRIP_DAYS)
     opening_rules: list[OpeningRule] = Field(default_factory=list, max_length=90)
+    reservations: list[ReservationConfirmation] = Field(default_factory=list, max_length=90)
     place_choices: dict[str, str] = Field(default_factory=dict, max_length=20)
     bindings: list[PlaceBinding] = Field(default_factory=list, max_length=20)
     anchors: dict[str, AnchorChoice] = Field(default_factory=dict, max_length=4)
@@ -147,6 +208,8 @@ class Constraints(Model):
             raise ValueError("指定日序超过旅行天数")
         if any(len(ids) > 3 or len(set(ids)) != len(ids) for ids in self.day_place_ids.values()):
             raise ValueError("每日最多三处地点，不能重复")
+        if len({(r.place_id, r.on_date) for r in self.reservations}) != len(self.reservations):
+            raise ValueError("同一景点同一天只能保留一个预约确认")
         object.__setattr__(self, "__pydantic_fields_set__", submitted_fields)
         return self
 
@@ -377,3 +440,5 @@ class TripResult(Model):
     adjustments: list[Adjustment] = Field(default_factory=list)
     revision_scope: dict = Field(default_factory=dict)
     name_normalizations: list[dict] = Field(default_factory=list)
+    visit_checks: list[VisitCheck] = Field(default_factory=list)
+    admission_verification: bool = False

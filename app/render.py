@@ -1,6 +1,13 @@
 import re
 
-from app.presentation import day_description, hotel_details, issue_message, plain_text, weather_line
+from app.presentation import (
+    admission_summary,
+    day_description,
+    hotel_details,
+    issue_message,
+    plain_text,
+    weather_line,
+)
 
 
 def escape(value):
@@ -63,6 +70,16 @@ def render_markdown(trip):
         for item in b.items:
             lines.append(f"| {escape(item.category)} | {item.quantity} {item.unit} | ¥{item.unit_price.low:.2f}–{item.unit_price.high:.2f} | ¥{item.total.low:.2f}–{item.total.high:.2f} |")
         lines += ["", f"**总计：¥{b.total.low:.2f}–{b.total.high:.2f}**", "", escape(c.pricing_note), ""]
+    if trip.visit_checks:
+        lines += ["## 景点入场核验", ""]
+        for check in trip.visit_checks:
+            lines += [f"- {check.on_date} {escape(check.place_name)}：{escape(admission_summary(check, c))}",
+                f"  {escape(check.note)}"]
+            if check.checked_at:
+                lines += [f"  核对时间：{check.checked_at.isoformat()}"]
+            lines += [f"  [资料原文]({url})" for url in check.source_urls]
+            if check.booking_url:
+                lines += [f"  [预约说明]({check.booking_url})"]
     if trip.issues:
         lines += ["## 风险与未满足约束", ""] + [f"- {escape(issue_message(i))}" for i in trip.issues] + [""]
     if trip.adjustments:

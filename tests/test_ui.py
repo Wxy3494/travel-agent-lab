@@ -46,6 +46,24 @@ def fill_example(ui):
     ui.text_input(key="form_interests").set_value("博物馆，公园")
 
 
+def test_admission_details_confirmation_and_refresh(ui):
+    fill_example(ui)
+    submit_form(ui)
+    trip = ui.session_state.trip
+    ui.selectbox(key="visit_check_choice").set_value(trip["visit_checks"][0]).run()
+    assert not ui.exception
+    next(b for b in ui.button if b.label == "保存预约确认并重新检查").click().run()
+    assert ui.session_state.trip["version"] == 1
+    assert any("先完成实际预约" in w.value for w in ui.warning)
+    next(c for c in ui.checkbox if c.label.startswith("我已完成")).check()
+    next(b for b in ui.button if b.label == "保存预约确认并重新检查").click().run()
+    assert not ui.exception and ui.session_state.trip["version"] == 2
+    assert ui.session_state.trip["constraints"]["reservations"][0]["people"] == 2
+    next(b for b in ui.button if b.label == "重新核验景点入场信息").click().run()
+    assert not ui.exception and ui.session_state.trip["version"] == 3
+    assert ui.session_state.trip["metrics"]["model_calls"] == 0
+
+
 def test_blank_form_lists_all_missing_fields_without_guessing(ui):
     submit_form(ui)
     assert ui.session_state.trip is None
