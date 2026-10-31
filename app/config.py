@@ -42,11 +42,18 @@ class Settings:
     visit_api_url: str = ""
     visit_api_key: str = ""
     max_visit_calls: int = 60
+    meituan_enabled: bool = False
+    meituan_token: str = ""
+    meituan_node_path: str = ""
+    meituan_cli_path: str = ""
+    meituan_timeout: float = 125
 
     def __post_init__(self):
         if self.mode not in {"demo", "live"}:
             raise ValueError("TRAVEL_MODE must be demo or live")
         planning_timeout(self.timeout)
+        if not math.isfinite(self.meituan_timeout) or not 0 < self.meituan_timeout <= 135:
+            raise ValueError("Meituan timeout must be between 0 and 135 seconds")
         if self.visit_provider not in {"official", "custom"} or not 1 <= self.max_visit_calls <= 100:
             raise ValueError("Invalid visitor verification provider or call limit")
         if not 0 <= self.max_repairs <= 2 or not 1 <= self.max_tool_calls <= 500:
@@ -79,6 +86,11 @@ class Settings:
             visit_api_url=os.getenv("VISIT_API_URL", ""),
             visit_api_key=os.getenv("VISIT_API_KEY", ""),
             max_visit_calls=int(os.getenv("VISIT_MAX_CALLS", "60")),
+            meituan_enabled=os.getenv("MEITUAN_TRAVEL_ENABLED", "false").lower() in {"true", "1", "yes"},
+            meituan_token=os.getenv("MEITUAN_HT_TOKEN", ""),
+            meituan_node_path=os.getenv("MEITUAN_NODE_PATH", ""),
+            meituan_cli_path=os.getenv("MEITUAN_CLI_PATH", ""),
+            meituan_timeout=float(os.getenv("MEITUAN_TIMEOUT_SECONDS", "125")),
         )
         if result.mode not in {"demo", "live"}:
             raise ValueError("TRAVEL_MODE must be demo or live")

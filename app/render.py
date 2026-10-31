@@ -70,6 +70,13 @@ def render_markdown(trip):
         for item in b.items:
             lines.append(f"| {escape(item.category)} | {item.quantity} {item.unit} | ¥{item.unit_price.low:.2f}–{item.unit_price.high:.2f} | ¥{item.total.low:.2f}–{item.total.high:.2f} |")
         lines += ["", f"**总计：¥{b.total.low:.2f}–{b.total.high:.2f}**", "", escape(c.pricing_note), ""]
+    if trip.travel_info:
+        info = trip.travel_info
+        lines += ["## 美团景点与门票参考", "", escape(info.message), "", "查询时间：" + info.queried_at.isoformat(), ""]
+        if info.queried_places < info.total_places:
+            lines += [f"本次查询覆盖前{info.queried_places}个地点，共{info.total_places}个。", ""]
+        if info.content:
+            lines += [info.content, ""]
     if trip.visit_checks:
         lines += ["## 景点入场核验", ""]
         for check in trip.visit_checks:

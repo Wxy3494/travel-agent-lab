@@ -30,6 +30,7 @@ def create_app(settings=None, service=None):
         return {"status": "ok", "mode": settings.mode,
                 "request_timeout_seconds": settings.timeout,
                 "live_keys_configured": bool(settings.model_key and settings.amap_key),
+                "meituan_configured": bool(settings.meituan_enabled and settings.meituan_token),
                 "auth": "local-only demo; do not expose publicly"}
 
     @api.post("/trips", response_model=TripResult)

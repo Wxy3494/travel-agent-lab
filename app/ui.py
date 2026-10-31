@@ -423,6 +423,15 @@ if trip:
     with st.container(border=True):
         show_trip(trip, latest=True)
     if trip.get("visit_checks") or trip.get("days"):
+        info = trip.get("travel_info")
+        if info:
+            with st.expander("美团景点与门票参考", expanded=info["status"] == "success"):
+                st.caption(info["message"])
+                st.caption("查询时间：" + info["queried_at"])
+                if info["queried_places"] < info["total_places"]:
+                    st.caption(f"本次查询覆盖前{info['queried_places']}个地点，共{info['total_places']}个；其他地点仍需核实。")
+                if info["content"]:
+                    st.markdown(info["content"])
         with st.expander("景点入场核验与预约确认"):
             st.caption("常规开放规则不保证当天无临时闭馆；免费景点也可能要预约。这里只记录你确认的日期、人数和时段，不填写身份证或订单号。")
             if not trip.get("visit_checks"):

@@ -420,6 +420,17 @@ class CloneRequest(Model):
     version: int | None = Field(default=None, ge=1)
 
 
+class TravelInfo(Model):
+    status: Literal["success", "unavailable"]
+    content: str = Field(default="", max_length=40000)
+    message: str = ""
+    queried_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    source_url: str = "https://developer.meituan.com/ai-hub/skill-list/detail/12"
+    query_fingerprint: str = ""
+    queried_places: int = 0
+    total_places: int = 0
+
+
 class TripResult(Model):
     id: str
     version: int
@@ -442,3 +453,4 @@ class TripResult(Model):
     name_normalizations: list[dict] = Field(default_factory=list)
     visit_checks: list[VisitCheck] = Field(default_factory=list)
     admission_verification: bool = False
+    travel_info: TravelInfo | None = None

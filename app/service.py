@@ -12,11 +12,22 @@ from app.admissions import AdmissionService
 from app.agents import AdmissionRefreshAgents, AutoGenAgents, DemoAgents
 from app.audit import audit_result
 from app.day_input import MAX_TRIP_DAYS, day_references
+from app.meituan import MeituanTravelService
 from app.names import normalize_cities, resolve_names
 from app.planning import allocate_days, materialize
 from app.providers import AmapProvider, FixtureProvider, ProviderError
 from app.render import render_markdown
-from app.schemas import Constraints, DayChoice, Issue, Metrics, Review, Selection, TripRequest, TripResult
+from app.schemas import (
+    Constraints,
+    DayChoice,
+    Issue,
+    Metrics,
+    Review,
+    Selection,
+    TravelInfo,
+    TripRequest,
+    TripResult,
+)
 from app.storage import VersionConflict
 from app.weather import WeatherService
 
@@ -33,6 +44,7 @@ class TravelService:
         self.settings, self.repository = settings, repository
         self.weather_service = WeatherService(settings)
         self.admission_service = AdmissionService(settings)
+        self.meituan_service = MeituanTravelService(settings)
         self.provider_factory = provider_factory or (
             (lambda: FixtureProvider(settings.max_tool_calls)) if settings.mode == "demo" else
             (lambda: AmapProvider(settings.amap_key, settings.max_tool_calls)))
@@ -240,6 +252,11 @@ class TravelService:
                                 break
                             last_errors = fingerprint
                         result.adjustments = suggestions(result)
+                        remaining = self.settings.timeout - (time.perf_counter() - start) - 5
+                        if self.settings.meituan_enabled and self.settings.mode == "live" and provider.calls >= self.settings.max_tool_calls:
+                            result.travel_info = TravelInfo(status="unavailable", message="本次工具查询额度已用完，未追加美团查询；原有行程已保留。")
+                        else:
+                            await self.meituan_service.enrich(result, previous, min(self.settings.meituan_timeout, remaining))
         except TimeoutError:
             result.status = "failed"
             result.issues = [Issue(code="request_timeout", message="规划超时，已停止；请减少城市或地点后重试")]
@@ -270,8 +287,9 @@ class TravelService:
                         await asyncio.wait_for(resource.close(), timeout=3)
                     except Exception as exc:  # noqa: BLE001
                         result.trace.append({"step": "cleanup", "error_type": type(exc).__name__})
+            extra_calls = sum(t.get("tool_calls", 0) for t in result.trace if t.get("step") == "meituan_reference")
             result.metrics = Metrics(elapsed_ms=round((time.perf_counter() - start) * 1000, 2),
-                                     tool_calls=provider.calls if provider else 0, **usage)
+                                     tool_calls=(provider.calls if provider else 0) + extra_calls, **usage)
             if self.settings.input_price is not None and self.settings.output_price is not None:
                 result.metrics.estimated_model_cost_cny = round((result.metrics.input_tokens * self.settings.input_price +
                                                                  result.metrics.output_tokens * self.settings.output_price) / 1_000_000, 6)

@@ -45,10 +45,14 @@ def record(evidence_dir):
     official = json.loads(official_path.read_text(encoding="utf-8")) if official_path.is_file() else None
     official_notes = "；".join(row["place_name"] + ("取得规则" if row["authority"] == "official" else "未取得规则，保留待核实")
                               for row in official["checks"]) if official else "本轮未查询公开官网"
+    meituan_path = evidence_dir / "api-check.json"
+    meituan = json.loads(meituan_path.read_text(encoding="utf-8")) if meituan_path.is_file() else None
     snapshot = {"checked_at": datetime.now(ZoneInfo("Asia/Shanghai")).isoformat(),
         "pytest": {**counts, "report_sha256": digest(evidence_dir / "pytest.xml")},
         "ruff": "passed", "pip_check": "passed", "offline": evaluations,
         "historical_live": history, "current_live_end_to_end": "not_rerun_no_paid_model_or_map_calls",
+        "meituan_live": {"passed": meituan["passed"], "scope": meituan["scope"],
+            "checked_at": meituan["checked_at"], "report_sha256": digest(meituan_path)} if meituan else "not_run",
         "official_admission_pages": {"verified": official["verified"], "total": official["total"],
             "http_calls": official["http_calls"], "report_sha256": digest(official_path),
             "scope": official["scope"]} if official else "not_run",
@@ -70,12 +74,13 @@ def record(evidence_dir):
 | 离线场景 | v3 {evaluations['v3']['passed']}/{evaluations['v3']['total']}；v2 {evaluations['v2']['passed']}/{evaluations['v2']['total']} | 模型调用为零；已知回归，非盲测 |
 | 发布包界面 | 独立进程解压后运行 AppTest，CSS 加载、JPG 嵌入通过 | 复用本机依赖，未在全新机器安装，未重新做浏览器外观检查 |
 | 真实接口历史 | 2026-10-15 广州两日生成、预算修改、历史及导出；2026-10-16 武汉酒店地址定位有通过记录 | 当前源码有后续修改，本轮未重新发送模型或地图请求 |
+| 美团真实查询 | {'FastAPI 查询、保存、读取和导出通过' if meituan and meituan['passed'] else '本轮未通过'} | 地图/规划角色为隔离夹具；仅美团 CLI 真实请求，不代表真实路线或票务库存验收 |
 | 官网入场资料 | {str(official['verified']) + '/' + str(official['total']) + ' 个适配场馆实际取得规则' if official else '本轮未查询'} | {official_notes}。常规规则不代表临时公告、实时余量或预约成功 |
 | 真实全覆盖 | 未通过完整验收 | 其他路线、实时房价/房态/余票、七天天气厂商、30天真实规划仍未验收 |
 | Docker、云端 CI | 本轮未运行 | 配置不等于运行证据 |
 | Git 与外发 | 本地基线和修复提交；ZIP 清单记录最终提交与各文件 SHA256 | 无外部推送；未选开源许可证；不能伪称已有远端历史或云端 CI 成绩 |
 
-本轮新增：按具体场馆/日期核对入场规则、闭馆改期/可选替换、开放与停止入场时段、预约确认、基础票价入账和独立审计；新增只读票务接口契约、无模型刷新、资料过期降级和用户资料来源说明。内置两个官网适配，非全国覆盖；详见 [景点入场核验](ADMISSION_VERIFICATION.md)。此前六项修复继续纳入完整回归。
+本轮新增：美团个人开发者旅行资料接入，真实模式按景点和日期自动只读查询，保存/导出参考资料；固定版本 CLI、本机配置、短时缓存、超时和权限错误保留原有行程。文字咨询不改写严格入场结论或把起价当作门票定价，详见 [美团接入](MEITUAN.md)。此前景点入场核验和六项修复继续纳入完整回归。
 
 浏览器外观检查未完成：Computer Use 辅助程序反复在 sandbox setup 阶段退出；新增面板和交互通过 AppTest，不把它写成截图验收。
 
