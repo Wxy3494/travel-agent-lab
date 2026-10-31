@@ -7,14 +7,16 @@ from zoneinfo import ZoneInfo
 import httpx
 
 from app.audit import audit_result
+from app.config import client_read_timeout
 from app.schemas import TripResult
 
 
 def run():
     records = []
-    with httpx.Client(base_url="http://127.0.0.1:8000", timeout=200) as client:
+    with httpx.Client(base_url="http://127.0.0.1:8000", timeout=client_read_timeout()) as client:
         health = client.get("/health")
         health.raise_for_status()
+        client.timeout = httpx.Timeout(client_read_timeout(health.json().get("request_timeout_seconds")))
         if health.json()["mode"] != "demo":
             raise SystemExit("Demo API required; this smoke does not authorize paid requests.")
         anchor = (datetime.now(ZoneInfo("Asia/Shanghai")).date() + timedelta(days=2)).isoformat()

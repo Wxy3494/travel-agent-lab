@@ -7,6 +7,7 @@ import re
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
+from app.day_input import DAY_REFERENCE, day_references
 from app.providers import ProviderError
 
 NUMBERS = {"一": 1, "二": 2, "两": 2, "三": 3, "四": 4, "五": 5, "六": 6,
@@ -28,9 +29,13 @@ def number(value):
 
 def demo_patch(text):
     patch = {}
-    scoped = re.search(rf"第({INTEGER})天", text)
+    try:
+        days = day_references(text)
+    except ValueError as exc:
+        raise ProviderError("invalid_day", str(exc)) from None
+    scoped = DAY_REFERENCE.search(text)
     if scoped and re.search(r"轻松|只安排下午|只安排上午|游览\d+分钟|\d{1,2}[:：]\d{2}", text):
-        rule = {"day": number(scoped[1])}
+        rule = {"day": days[0]}
         if "只修改" in text and "下午" in text:
             rule["period"] = "afternoon"
         if "轻松" in text:

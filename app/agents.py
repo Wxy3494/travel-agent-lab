@@ -8,7 +8,7 @@ from pydantic import ValidationError
 
 from app.input_parser import demo_patch, merge_day_rules
 from app.model_client import LimitedClient
-from app.planning import demo_selection
+from app.planning import allocate_days, demo_selection
 from app.providers import ProviderError
 from app.schemas import ConstraintPatch, Constraints, Review, Selection
 
@@ -164,6 +164,7 @@ class AutoGenAgents:
 
     async def select(self, c, facts, feedback):
         return await self.json_result("planner", "按城市顺序分配全部旅行日（最多30天），通常每日选择1～3个已提供的地点ID。"
+                                      "city_schedule已根据必去地点数量分配每天城市，按此表安排，不能擅自压缩必去城市的停留时间。"
                                       "已查询地点不足以覆盖长行程时，可留出自由活动日（place_ids为空），不能重复或编造地点。"
                                       "地点不得重复，必须包含must_visit、排除excluded。"
                                       "跨城日减少活动，考虑预算和兴趣；城市内路线将在代码层逐段查询。"
@@ -172,6 +173,7 @@ class AutoGenAgents:
                                       "reason用游客能读懂的中文解释选择取舍，每天不超过60字；禁止写字段名、英文代码、编号或内部校验过程。"
                                       "不声称已知开放时间、预约或无障碍状态。",
                                       {"constraints": c.model_dump(mode="json"),
+                                       "city_schedule": allocate_days(c),
                                        "facts": {k: v.model_dump(mode="json") for k, v in facts.items()},
                                        "feedback": feedback}, Selection)
 

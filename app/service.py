@@ -10,7 +10,7 @@ from pydantic import ValidationError
 from app.adjustments import suggestions
 from app.agents import AutoGenAgents, DemoAgents
 from app.audit import audit_result
-from app.input_parser import INTEGER, number
+from app.day_input import MAX_TRIP_DAYS, day_references
 from app.names import normalize_cities, resolve_names
 from app.planning import allocate_days, materialize
 from app.providers import AmapProvider, FixtureProvider, ProviderError
@@ -77,6 +77,12 @@ class TravelService:
                     except ValidationError:
                         raise ProviderError("extracted_constraints_invalid", "提取的需求字段存在冲突或无效，请一次检查日期、人数、预算、城市及必去/排除地点") from None
                     result.constraints = c
+                    try:
+                        day_references(request.prompt, c.days or MAX_TRIP_DAYS)
+                        if revision and revision.target_day and c.days and revision.target_day > c.days:
+                            raise ValueError("指定日序超过旅行天数")
+                    except ValueError as exc:
+                        raise ProviderError("invalid_day", str(exc)) from None
                     if blocked_input(c.model_dump_json()):
                         raise ProviderError("unsupported_action", "提取内容含越权操作或敏感信息；请求未执行")
                     missing = c.missing()
@@ -114,7 +120,13 @@ class TravelService:
                                 ev = provider.record("estimate", "明确城市全称映射及行政区查询", f"{raw} → {canonical}；行政区 {facts[canonical].adcode}")
                                 result.name_normalizations.append({"field": field, "submitted": raw, "canonical": canonical,
                                                                    "adcode": facts[canonical].adcode, "evidence_id": ev})
+                        c, result.clarifications = await resolve_names(c, facts, provider)
+                        result.constraints = c
+                        if result.clarifications:
+                            result.questions = [q.query + "：" + q.reason for q in result.clarifications]
+                            raise ProviderError("place_confirmation", "请先确认地点候选或修改地点名称")
                         schedule = allocate_days(c)
+                        result.trace.append({"step": "city_allocation", "days": schedule})
                         for day, ids in c.day_place_ids.items():
                             city = schedule[day - 1]
                             for pid in ids:
@@ -123,11 +135,6 @@ class TravelService:
                                     if p:
                                         facts[city].places.append(p)
                                         facts[city].evidence_ids.append(p.evidence_id)
-                        c, result.clarifications = await resolve_names(c, facts, provider)
-                        result.constraints = c
-                        if result.clarifications:
-                            result.questions = [q.query + "：" + q.reason for q in result.clarifications]
-                            raise ProviderError("place_confirmation", "请先确认地点候选或修改地点名称")
                         for city in c.cities:
                             count = len({b.place_id for b in c.bindings if b.field == "must_visit" and b.city == city})
                             capacity = 3 * schedule.count(city)
@@ -194,7 +201,7 @@ class TravelService:
         except ProviderError as exc:
             result.status = ("blocked" if exc.code == "unsupported_action" else
                              "needs_review" if exc.code == "too_many_activities" else
-                             "needs_input" if exc.code in {"demo_text_unsupported", "extracted_constraints_invalid", "place_confirmation", "anchor_invalid", "ambiguous_city", "lodging_invalid"}
+                             "needs_input" if exc.code in {"demo_text_unsupported", "extracted_constraints_invalid", "place_confirmation", "anchor_invalid", "ambiguous_city", "lodging_invalid", "invalid_day"}
                              else "failed")
             result.issues = [Issue(code=exc.code, message=str(exc))]
             if result.status == "needs_input":
@@ -238,9 +245,9 @@ def revision_scope(result, previous, revision, prompt):
         return set(), None
     target = revision.target_day if revision else None
     period = revision.target_period if revision else "day"
-    explicit = re.search(rf"第({INTEGER})天", prompt)
+    explicit = day_references(prompt, result.constraints.days)
     if explicit:
-        target = number(explicit[1])
+        target = explicit[0]
         if "只修改" in prompt and "下午" in prompt:
             period = "afternoon"
     before, after = previous.constraints.model_dump(mode="json"), result.constraints.model_dump(mode="json")

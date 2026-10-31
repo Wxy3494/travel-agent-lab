@@ -2,7 +2,7 @@
 
 面向国内自由行的本地旅行规划助手。首页直接显示出发地、目的地、日期、天数、人数和全团预算六项输入框，点击生成后在表单下方展示行程，同时保留文字修改入口。结果包括每日安排、跨城交通、住宿晚数、全团预算区间、风险、来源和地图链接；每次修改保存新版本，可导出 Markdown。
 
-**2026-10-14 验收状态：104 项 pytest 通过，原有30/30、新增10/10离线契约场景通过；实际运行API、表单和文字修改已验收。真实DeepSeek/高德、真实模型对照和Docker运行尚未验收。** 本地缺密钥与Docker CLI。模拟HTTP和AutoGen回放验证程序链路，离线成绩不能证明旅游质量或多Agent提升。
+**当前状态（2026-10-31）：以[统一验收摘要](docs/ACCEPTANCE.md)及其[源码哈希快照](docs/acceptance_snapshot.json)为准。** 已有2026-10-15广州真实两日小样本和10-16武汉酒店定位记录；本轮只做本地回归，不重跑真实接口。Docker、云端CI、其他路线及真实价格仍未完成验收。
 
 ## 本机启动
 
@@ -111,12 +111,14 @@ Copy-Item .env.example .env
 
 ## Docker 与公开准备
 
-Dockerfile、Compose 和离线 CI 配置已提供，当前没有 Docker CLI，**未实测构建和容器运行**。有 Docker 环境后执行 `docker compose config`、`docker compose up --build`，访问 health 与页面，再完成单城/跨城/重启持久化检查。CI 配置未推送，也没有云端运行结果。
+Dockerfile、Compose 和离线 CI 配置已提供，**容器构建和运行尚未验收**。有 Docker 环境后执行 `docker compose config`、`docker compose up --build`，访问 health 与页面，再完成单城/跨城/重启持久化检查。CI 配置未推送，也没有云端运行结果。
 
-SQLite 运行数据位于 `data/runtime/`；密钥、运行记录、虚拟环境和评测原始结果均在忽略列表。执行 `python -m scripts.package_public` 生成只含源码、测试、配置样例和文档的本地 ZIP。此步骤不会初始化 Git、上传、推送或发布；发布前由项目所有者选择许可证。
+SQLite 运行数据位于 `data/runtime/`；密钥、运行记录、虚拟环境和评测原始结果均在忽略列表。执行 `python -m scripts.package_public` 生成只含源码、测试、配置样例和文档的本地 ZIP。本地 Git 已保存修复前基线与本次修复，ZIP 清单记录提交与 SHA256；另交付 history.bundle 供还原历史。打包不会上传、推送或发布；尚未选择开源许可证。
 
 ## 文档地图
 
+- [当前验收与交付](docs/ACCEPTANCE.md)：唯一当前状态入口；测试、源码哈希、历史真实小样本与待验收范围。
+- [交付与复现](docs/DELIVERY.md)：源码包、历史包、资源校验与安装边界。
 - [产品设计](docs/PRODUCT_DESIGN.md)：范围、输入、聊天流程、预算与信息边界。
 - [技术架构](docs/ARCHITECTURE.md)：模块、调度、状态、校验、版本并发与安全。
 - [参考项目报告](docs/REFERENCES.md)：固定版本、核心代码审查、取舍与许可证。

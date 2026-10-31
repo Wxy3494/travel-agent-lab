@@ -4,6 +4,22 @@ from dataclasses import dataclass
 
 from dotenv import load_dotenv
 
+DEFAULT_PLANNING_TIMEOUT = 300
+MAX_PLANNING_TIMEOUT = 600
+CLIENT_TIMEOUT_MARGIN = 30
+
+
+def planning_timeout(value=None):
+    value = float(os.getenv("TRAVEL_TIMEOUT_SECONDS", DEFAULT_PLANNING_TIMEOUT) if value is None else value)
+    if not math.isfinite(value) or not 0 < value <= MAX_PLANNING_TIMEOUT:
+        raise ValueError("Timeout must be finite and between 0 and 600 seconds")
+    return value
+
+
+def client_read_timeout(backend_timeout=None):
+    # Backend timeout includes planning; leave time for cleanup and response delivery.
+    return planning_timeout(backend_timeout) + CLIENT_TIMEOUT_MARGIN
+
 
 @dataclass(frozen=True)
 class Settings:
@@ -13,7 +29,7 @@ class Settings:
     base_url: str = "https://api.deepseek.com"
     model_key: str = ""
     amap_key: str = ""
-    timeout: float = 300
+    timeout: float = DEFAULT_PLANNING_TIMEOUT
     max_repairs: int = 2
     max_tool_calls: int = 300
     max_model_calls: int = 30
@@ -26,8 +42,7 @@ class Settings:
     def __post_init__(self):
         if self.mode not in {"demo", "live"}:
             raise ValueError("TRAVEL_MODE must be demo or live")
-        if not math.isfinite(self.timeout) or not 0 < self.timeout <= 600:
-            raise ValueError("Timeout must be finite and between 0 and 600 seconds")
+        planning_timeout(self.timeout)
         if not 0 <= self.max_repairs <= 2 or not 1 <= self.max_tool_calls <= 500:
             raise ValueError("Invalid execution limits")
         if not 1 <= self.max_model_calls <= 50:
@@ -45,7 +60,7 @@ class Settings:
             mode=os.getenv("TRAVEL_MODE", "demo"), db_path=os.getenv("TRAVEL_DB", cls.db_path),
             model=os.getenv("MODEL_NAME", cls.model), base_url=os.getenv("MODEL_BASE_URL", cls.base_url),
             model_key=os.getenv("DEEPSEEK_API_KEY", ""), amap_key=os.getenv("AMAP_API_KEY", ""),
-            timeout=float(os.getenv("TRAVEL_TIMEOUT_SECONDS", "300")),
+            timeout=planning_timeout(),
             max_repairs=int(os.getenv("TRAVEL_MAX_REPAIRS", "2")),
             max_tool_calls=int(os.getenv("TRAVEL_MAX_TOOL_CALLS", "300")),
             max_model_calls=int(os.getenv("TRAVEL_MAX_MODEL_CALLS", "30")),

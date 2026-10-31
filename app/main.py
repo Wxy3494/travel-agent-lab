@@ -28,6 +28,7 @@ def create_app(settings=None, service=None):
     @api.get("/health")
     def health():
         return {"status": "ok", "mode": settings.mode,
+                "request_timeout_seconds": settings.timeout,
                 "live_keys_configured": bool(settings.model_key and settings.amap_key),
                 "auth": "local-only demo; do not expose publicly"}
 

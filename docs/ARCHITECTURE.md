@@ -1,6 +1,6 @@
 # 技术架构与设计决策
 
-2026-10-14；Python 3.12.14、AutoGen AgentChat / Ext 0.7.5、FastAPI、Pydantic v2、HTTPX、SQLite、Streamlit。代码与全部命令在唯一项目目录中维护。
+2026-10-31更新；当前验收以[统一摘要](ACCEPTANCE.md)为准。Python 3.12.14、AutoGen AgentChat / Ext 0.7.5、FastAPI、Pydantic v2、HTTPX、SQLite、Streamlit。代码与全部命令在唯一项目目录中维护。
 
 ## 模块与调用关系
 
@@ -68,11 +68,11 @@ AutoGen JSON提取返回 `ConstraintPatch`，未提到的字段必须省略。�
 
 ## 工具与模型边界
 
-高德接口增加`/v3/place/detail`核验明确选择的地点，其余为地理编码、POI搜索、天气、公交与驾车2.0。公交参数是citycode；保留返回的步行/公交线路和主要站点，未给出的段不补造。路线是查询时参考，未提交指定日期余票请求。工具错误不包含key或原始响应URL。[官方路径规划2.0](https://developer.amap.com/api/webservice/guide/api/newroute)与[POI搜索](https://developer.amap.com/api/webservice/guide/api-advanced/search)为适配依据，真实账户权限尚未验收。
+高德接口增加`/v3/place/detail`核验明确选择的地点，其余为地理编码、POI搜索、天气、公交与驾车2.0。公交参数是citycode；保留返回的步行/公交线路和主要站点，未给出的段不补造。路线是查询时参考，未提交指定日期余票请求。工具错误不包含key或原始响应URL。[官方路径规划2.0](https://developer.amap.com/api/webservice/guide/api/newroute)与[POI搜索](https://developer.amap.com/api/webservice/guide/api-advanced/search)为适配依据；2026-10-15广州小样本实际通过的范围见LIVE_ACCEPTANCE，本轮没有重跑真实接口。
 
 高德网络超时12秒，瞬态HTTP429/5xx或网络错误最多重试一次；实际HTTP尝试计入工具预算，缓存命中不计。候选数量最多50/城，优先保留必去地点的精确名称。每个请求缓存路线与查询，返工重复相同路线不重复消耗额度。必要路线、耗时或费用所需距离缺失则失败；天气不可用降级为警告。
 
-默认每请求180秒、60次工具尝试、30次模型请求、16次角色执行、每个资料角色最多6次工具迭代；输出上限5000 token/模型请求。环境可将工具上限调至100、模型上限调至50，返工上限仍为2。生产模型客户端禁用SDK自动重试，使请求计数与出站尝试一致。不是全局账户金额熔断器，批量评测应从小样本开始。
+默认每请求300秒、300次工具尝试、30次模型请求；工具上限最多500、模型上限最多50，返工上限2，模型输出上限8000 token/次。网页从health读取后端等待上限，额外预留30秒清理与返回，连接等待单独为10秒；超时后引导先检查历史，避免立即重复提交。生产模型客户端禁用SDK自动重试，使请求计数与出站尝试一致。不是全局账户金额熔断器，批量评测应从小样本开始。
 
 默认DeepSeek客户端：OpenAI兼容Chat Completions；非工具输出请求JSON模式，Pydantic执行实际Schema检查，最多一次格式修复。默认关闭思考模式，避免旧SDK丢失多轮 `reasoning_content` 的兼容风险；仍须真实兼容验收。客户端声明支持工具/JSON是配置预期，不是实测证据。
 

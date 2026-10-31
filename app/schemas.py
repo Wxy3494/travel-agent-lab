@@ -3,7 +3,9 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, create_model, field_validator, model_validator
 
-MAX_TRIP_DAYS = 30
+from app.day_input import MAX_TRIP_DAYS, day_references
+
+DayIndex = Annotated[int, Field(ge=1, le=MAX_TRIP_DAYS)]
 
 
 class Model(BaseModel):
@@ -106,7 +108,7 @@ class Constraints(Model):
     place_choices: dict[str, str] = Field(default_factory=dict, max_length=20)
     bindings: list[PlaceBinding] = Field(default_factory=list, max_length=20)
     anchors: dict[str, AnchorChoice] = Field(default_factory=dict, max_length=4)
-    day_place_ids: dict[int, list[str]] = Field(default_factory=dict, max_length=MAX_TRIP_DAYS)
+    day_place_ids: dict[DayIndex, list[str]] = Field(default_factory=dict, max_length=MAX_TRIP_DAYS)
     optimize_routes: bool = True
     indoor_sources: dict[str, str] = Field(default_factory=dict, max_length=20)
 
@@ -168,6 +170,12 @@ class TripRequest(Model):
     constraints: Constraints = Field(default_factory=Constraints)
     strategy: Literal["single", "multi"] = "multi"
 
+    @field_validator("prompt")
+    @classmethod
+    def valid_day_reference(cls, value):
+        day_references(value)
+        return value
+
 
 class RevisionRequest(Model):
     base_version: int = Field(ge=1)
@@ -176,6 +184,18 @@ class RevisionRequest(Model):
     adjustment_id: str | None = None
     target_day: int | None = Field(default=None, ge=1, le=MAX_TRIP_DAYS)
     target_period: Literal["day", "afternoon"] = "day"
+
+    @field_validator("changes")
+    @classmethod
+    def valid_patch_fields(cls, value):
+        ConstraintPatch.model_validate(value)
+        return value
+
+    @field_validator("instruction")
+    @classmethod
+    def valid_day_reference(cls, value):
+        day_references(value)
+        return value
 
 
 class Evidence(Model):

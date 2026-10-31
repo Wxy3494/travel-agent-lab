@@ -2,7 +2,7 @@
 from math import ceil
 
 from app.names import must_ids
-from app.schemas import Adjustment
+from app.schemas import MAX_TRIP_DAYS, Adjustment
 
 
 def suggestions(result):
@@ -14,7 +14,7 @@ def suggestions(result):
             choices.append(Adjustment(id="increase_budget", title=f"将全团预算调整为 {amount} 元",
                 impact=f"增加预算 {amount - c.budget:.0f} 元，按当前费用估算留足空间；人数、地点和单价不变。仍非实时报价。",
                 changes={"budget": amount}))
-    if codes & {"too_many_activities", "missing_must_visit"} and c.days < 7:
+    if codes & {"too_many_activities", "missing_must_visit"} and c.days < MAX_TRIP_DAYS:
         choices.append(Adjustment(id="extra_day", title="增加一天以安排必去地点",
             impact="明确延长旅行一天；保留全部必去地点与人数，新增住宿和餐饮预算后重新核验，不保证一次调整即可解决全部问题。",
             changes={"days": c.days + 1, "day_place_ids": {}}))
@@ -42,7 +42,7 @@ def suggestions(result):
             choices.append(Adjustment(id="shorter_visits", title="将默认游览时长调整为30分钟",
                 impact="缩短默认游览时长；已经明确指定的分日时长不变，必去地点、人数和价格假设不变。重新核验交通与时间窗。",
                 changes={"visit_minutes": 30}))
-        if c.days < 7 and not any(a.id == "extra_day" for a in choices):
+        if c.days < MAX_TRIP_DAYS and not any(a.id == "extra_day" for a in choices):
             choices.append(Adjustment(id="extra_day", title="增加一天旅行时间",
                 impact="延长旅行一天并重新分配城市和活动，增加一晚住宿及一天餐饮；原人数、必去地点与单价不变。",
                 changes={"days": c.days + 1, "day_place_ids": {}}))

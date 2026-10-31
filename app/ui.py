@@ -13,6 +13,7 @@ import streamlit as st
 from dotenv import load_dotenv
 from pydantic import ValidationError
 
+from app.config import client_read_timeout
 from app.presentation import day_description, hotel_details, issue_message, plain_text, weather_line
 from app.render import escape, render_markdown
 from app.schemas import MAX_TRIP_DAYS, Constraints, TripResult
@@ -125,11 +126,15 @@ def sync_form(c):
 
 def request(method, path, payload=None):
     try:
-        response = httpx.request(method, API + path, json=payload, timeout=200)
+        timeout = httpx.Timeout(client_read_timeout(st.session_state.get("api_timeout")), connect=10, write=30, pool=10)
+        response = httpx.request(method, API + path, json=payload, timeout=timeout)
         if response.is_error:
             st.error(f"请求未完成（{response.status_code}）：{response.json().get('detail', '请检查输入')}")
             return None
         return response.json()
+    except httpx.TimeoutException:
+        st.warning("等待服务响应超时。后台可能仍在处理，请先在历史旅行列表检查结果，避免立即重复提交。")
+        return None
     except (httpx.HTTPError, ValueError):
         st.error("暂时无法连接规划服务，请启动服务后重试。")
         return None
@@ -249,6 +254,7 @@ with st.sidebar:
         st.rerun()
     health = request("GET", "/health")
     if health:
+        st.session_state.api_timeout = health.get("request_timeout_seconds")
         st.caption("真实接口 · 价格为估算" if health["mode"] == "live" else "离线演示 · 人工示例数据")
         if health["mode"] == "demo":
             st.caption("支持广州、深圳、珠海的基础需求；没有调用模型或真实地图。")

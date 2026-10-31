@@ -48,7 +48,18 @@ def day_window(c, day):
 
 def allocate_days(c):
     base, remainder = divmod(c.days, len(c.cities))
-    return [city for index, city in enumerate(c.cities) for _ in range(base + (index < remainder))]
+    counts = [base + (index < remainder) for index in range(len(c.cities))]
+    minimum = [max(1, ceil(len({b.place_id for b in c.bindings if b.field == "must_visit" and b.city == city}) / 3))
+               for city in c.cities]
+    if sum(minimum) > c.days:
+        from app.providers import ProviderError
+        raise ProviderError("too_many_activities", f"按每天最多三处景点，各城必去地点至少需要共{sum(minimum)}天；请增加天数或调整必去地点。")
+    for index, required in enumerate(minimum):
+        while counts[index] < required:
+            donor = max(range(len(counts)), key=lambda i: counts[i] - minimum[i])
+            counts[donor] -= 1
+            counts[index] += 1
+    return [city for city, count in zip(c.cities, counts, strict=True) for _ in range(count)]
 
 
 def demo_selection(c, facts):
