@@ -91,6 +91,8 @@ def constraint_text(field, value):
         return "；".join(city + "：" + address for city, address in value.items())
     if field == "daily_end_scope":
         return "最后一个游玩项目结束" if value == "last_activity" else "含返回住处的交通"
+    if field == "home_transport_scope":
+        return "出发地往返交通单独安排" if value == "separate" else "往返交通计入每日时间"
     if field == "place_choices":
         return "；".join(query.split(":", 1)[-1] + "：已确认具体地点" for query in value)
     if field == "day_place_ids":
@@ -184,6 +186,19 @@ def show_trip(trip, latest):
                 st.caption(plain_text(binding["basis"]))
     if trip["days"]:
         st.write(" → ".join(c["cities"]) + f" · {c['days']}天 · {c['people']}人")
+        if c.get("home_transport_scope") == "separate":
+            st.info("以下按已到达目的地安排当地游玩。出发地往返交通单独列出，不占每日游玩时间；实际出行日期与车次请另行确认。")
+        transfers = [t for day in trip["days"] for t in day.get("home_transfers", [])]
+        if transfers:
+            with st.expander("出发地往返交通（单独安排）"):
+                for t in transfers:
+                    label = "去程" if t["direction"] == "outbound" else "返程"
+                    duration = t["estimated_minutes"]
+                    st.markdown(f"**{label}：{t['from_city']} → {t['to_city']}**")
+                    st.write(f"路线参考约{duration // 60}小时{duration % 60}分钟 · 全团费用估算 ¥{t['cost']['low']:,.0f}–{t['cost']['high']:,.0f}")
+                    st.caption(t["note"])
+                    for segment in t.get("route_segments", []):
+                        st.caption(plain_text(segment))
         total = trip["budget"]["total"] if trip["budget"] else None
         if total:
             st.markdown(f"全团估算 **¥{total['low']:,.0f} – {total['high']:,.0f}** · 预算 ¥{c['budget']:,.0f}")
@@ -324,11 +339,12 @@ with st.container(key="planning_section"), st.form("trip_form", border=True):
     st.markdown('<div class="travel-form-kicker">规划你的旅行</div>', unsafe_allow_html=True)
     st.subheader("开启一段旅行")
     st.caption("下面六项为必填信息。多城旅行按目的地顺序安排。")
+    st.caption("开始日期与天数对应目的地当地游玩；出发地往返交通的实际日期另行安排。")
     a, b, c = st.columns(3)
     origin = a.text_input("出发地", key="form_origin", placeholder="例如：广州", max_chars=60)
     destinations = b.text_input("目的地（按顺序，用逗号分隔）", key="form_destinations",
                                 placeholder="例如：广州，深圳", max_chars=185)
-    start = c.date_input("出发日期", key="form_date", value=None,
+    start = c.date_input("游玩开始日期", key="form_date", value=None,
                          min_value=min(TODAY, st.session_state.form_date or TODAY), format="YYYY/MM/DD")
     a, b, c = st.columns(3)
     days = a.number_input("旅行天数", key="form_days", min_value=1, max_value=MAX_TRIP_DAYS,
@@ -353,7 +369,7 @@ with st.container(key="planning_section"), st.form("trip_form", border=True):
         transport = st.radio("交通方式", ["public", "driving"], key="form_transport", horizontal=True,
                              format_func=lambda v: "公共交通" if v == "public" else "自驾")
         a, b = st.columns(2)
-        return_home = a.checkbox("计入最后一天返回出发地的交通", key="form_return")
+        return_home = a.checkbox("计入返回出发地的交通费用", key="form_return")
         accessible = b.checkbox("有无障碍需求（需核实设施）", key="form_accessible")
     with details:
         st.markdown("**住宿与费用预算**")
@@ -376,6 +392,7 @@ with st.container(key="planning_section"), st.form("trip_form", border=True):
     with details:
         st.markdown("**每天的出游时间**")
         st.caption("按旅行所在地时间计算。开始指从住处出发，结束指最后一个游玩项目结束；返回住处的交通另计，不支持跨午夜。")
+        st.caption("默认按已到达目的地安排当地游玩。出发地往返交通单独估算，不占每日游玩时间；目的地之间的换城仍计入当天安排。")
         a, b = st.columns(2)
         daily_start = a.time_input("每天从住处出发", key="form_daily_start")
         daily_end = b.time_input("最后一个游玩项目结束", key="form_daily_end")
@@ -392,11 +409,11 @@ if submit:
             excluded=split_names(excluded), transport=transport, return_to_origin=return_home,
             accessibility_required=accessible, rooms=rooms or None, pricing_note=pricing_note,
             arrival_time=None, departure_time=None, daily_start=daily_start, daily_end=daily_end,
-            daily_end_scope="last_activity", lodging_addresses=lodging_inputs(lodging, split_names(destinations)),
+            daily_end_scope="last_activity", home_transport_scope="separate", lodging_addresses=lodging_inputs(lodging, split_names(destinations)),
             visit_minutes=previous_constraints.get("visit_minutes", 90), day_rules=rules, **advanced,
             **{field: prices[label] for label, field in [("hotel", "hotel_per_room_night"),
                 ("food", "food_per_person_day"), ("ticket", "ticket_per_person_visit")] if label in prices})
-        missing = constraints.missing()
+        missing = ["游玩开始日期" if label == "出发日期" else label for label in constraints.missing()]
         if missing:
             st.warning("请补充：" + "、".join(missing))
         else:
@@ -419,7 +436,7 @@ trip = st.session_state.trip
 if trip:
     st.divider()
     st.subheader("你的旅行方案")
-    st.caption("天气自动匹配每天预计所在城市，仅展示今天起七天内已发布的预报；跨城当天分别显示出发和抵达城市。")
+    st.caption("天气自动匹配行程涉及城市，仅展示今天起七天内已发布的预报；单独安排的往返交通，实际出行日期需另行确认。")
     with st.container(border=True):
         show_trip(trip, latest=True)
     if trip.get("visit_checks") or trip.get("days"):
@@ -534,7 +551,7 @@ if trip:
                 st.write(f"第{diff['from_version']}版 → 第{diff['to_version']}版")
                 st.write("全团费用估算：" + constraint_text("budget", diff["budget_before"]) + " → " +
                          constraint_text("budget", diff["budget_after"]))
-                labels = {"origin": "出发地", "cities": "目的地", "start_date": "出发日期", "days": "旅行天数",
+                labels = {"origin": "出发地", "cities": "目的地", "start_date": "开始日期", "days": "旅行天数",
                     "people": "人数", "budget": "全团总预算", "interests": "兴趣", "must_visit": "必去地点", "excluded": "排除地点",
                     "transport": "交通方式", "return_to_origin": "计入返程", "accessibility_required": "无障碍需求", "rooms": "房间数",
                     "hotel_per_room_night": "每间每晚住宿预算", "food_per_person_day": "每人每天餐饮预算",
@@ -543,7 +560,7 @@ if trip:
                     "day_rules": "分日时段与节奏", "opening_rules": "开放与闭馆说明", "reservations": "你确认的预约", "place_choices": "候选确认",
                     "bindings": "地点名称映射", "anchors": "酒店与车站位置", "day_place_ids": "指定活动", "optimize_routes": "路线顺序比较",
                     "indoor_sources": "室内属性依据"}
-                labels.update(lodging_addresses="酒店或住宿地址", daily_end_scope="结束时间含义")
+                labels.update(lodging_addresses="酒店或住宿地址", daily_end_scope="结束时间含义", home_transport_scope="往返交通安排方式")
                 rows = [{"需求项目": labels.get(r["field"], "其他需求"), "修改前": constraint_text(r["field"], r["before"]),
                          "修改后": constraint_text(r["field"], r["after"])} for r in diff["constraints"]]
                 if rows:

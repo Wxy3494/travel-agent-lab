@@ -3,6 +3,7 @@ import re
 from urllib.parse import urlencode
 
 AUDIT_MESSAGES = {
+    "home_transport": "往返交通的起终点、费用或来源与行程不一致，请重新生成",
     "day_count": "行程天数或日期顺序与填写的信息不一致",
     "city_order": "城市游玩顺序与填写的信息不一致",
     "date_sequence": "行程日期没有按顺序衔接",

@@ -66,6 +66,8 @@ AutoGen JSON提取返回 `ConstraintPatch`，未提到的字段必须省略。�
 
 `MeituanTravelService` 在规划校验完成后，通过固定版本官方 CLI 追加一次只读旅行资料查询，结果独立保存在 `TripResult.travel_info`，不进入模型修复或修改严格入场结论。共享整次等待与工具预算；10分钟内复用匹配查询，失败保留原方案。细节见 [美团接入](MEITUAN.md)。
 
+新请求默认 `home_transport_scope=separate`，出发地往返单独查询并存入首末日的 `home_transfers`，不生成虚假的当日出发/到达时钟；费用仍入账。当地 `events` 和目的地之间换城继续执行原有时间检查。旧版 JSON 缺字段时按 `in_day` 读取，网页重算显式切换新默认；独立审计核对往返的起终点、日期归属、来源和费用。[往返交通](HOME_TRANSPORT.md)。
+
 `audit_result`不调用生成器算术，用Decimal独立重算金额、日期、间夜、人天、POI身份、递增时间、活动窗口、游览时长与开放规则；新增独立核验来源时效、入场窗口、人数/日期绑定的预约确认、基础票价及票价预算行。meal/rest/wait明确显示，单项费用为0，餐饮统一在每日预算计入。新的结果字段均有默认值，旧SQLite JSON可以继续读取；旧数据缺乏分日费用时不做虚假的局部复用。
 
 审核不能清除错误，最多初始草案加两次返工。预算/无障碍/时间不足等确定问题及重复相同错误提前停止；可修复的虚构POI仍走有界返工。adjustments只提供适用的候选changes和影响，revise按持久化的adjustment_id取出并执行，不自动放宽原需求。

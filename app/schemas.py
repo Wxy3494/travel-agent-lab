@@ -150,6 +150,7 @@ class Constraints(Model):
     excluded: list[str] = Field(default_factory=list, max_length=10)
     transport: Literal["public", "driving"] = "public"
     return_to_origin: bool = False
+    home_transport_scope: Literal["separate", "in_day"] = "separate"
     accessibility_required: bool = False
     rooms: int | None = Field(default=None, ge=1, le=10)
     hotel_per_room_night: PriceRange = Field(default_factory=lambda: PriceRange(low=180, high=320))
@@ -356,6 +357,20 @@ class DayWeather(Model):
     available: bool = False
 
 
+class HomeTransfer(Model):
+    direction: Literal["outbound", "return"]
+    from_city: str
+    to_city: str
+    estimated_minutes: int = Field(gt=0)
+    unit_price: PriceRange
+    cost: PriceRange
+    evidence_ids: list[str] = Field(min_length=1)
+    start_location: str
+    end_location: str
+    route_segments: list[str] = Field(default_factory=list)
+    note: str
+
+
 class DayPlan(Model):
     day: int
     date: date
@@ -371,6 +386,7 @@ class DayPlan(Model):
     travel_minutes: int = 0
     route_comparison: dict = Field(default_factory=dict)
     indoor_options: list[Place] = Field(default_factory=list)
+    home_transfers: list[HomeTransfer] = Field(default_factory=list, max_length=2)
 
 
 class BudgetItem(Model):
@@ -454,3 +470,11 @@ class TripResult(Model):
     visit_checks: list[VisitCheck] = Field(default_factory=list)
     admission_verification: bool = False
     travel_info: TravelInfo | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def legacy_home_transport(cls, value):
+        # Old saved JSON scheduled home-city journeys inside the daily timeline.
+        if isinstance(value, dict) and isinstance(value.get("constraints"), dict) and "home_transport_scope" not in value["constraints"]:
+            value = {**value, "constraints": {**value["constraints"], "home_transport_scope": "in_day"}}
+        return value

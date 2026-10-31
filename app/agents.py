@@ -202,6 +202,8 @@ class AutoGenAgents:
                                       "已查询地点不足以覆盖长行程时，可留出自由活动日（place_ids为空），不能重复或编造地点。"
                                       "地点不得重复，必须包含must_visit、排除excluded。"
                                       "跨城日减少活动，考虑预算和兴趣；城市内路线将在代码层逐段查询。"
+                                      "home_transport_scope为separate时，出发地去首个目的地及最终返回出发地的交通独立安排，"
+                                      "不占首末日游玩时段；按已到达目的地安排当地活动。目的地之间换城仍占当天时间。"
                                       "bindings给出已核实的必去和排除POI身份，按place_id满足，不猜简称。"
                                       "遵守arrival_time、departure_time、daily_start/end、day_rules；轻松日减少可选活动。"
                                       "reason用游客能读懂的中文解释选择取舍，每天不超过60字；禁止写字段名、英文代码、编号或内部校验过程。"
@@ -213,6 +215,8 @@ class AutoGenAgents:
 
     async def review(self, c, days, issues):
         return await self.json_result("reviewer", "检查方案是否符合用户偏好和约束；发现问题给出可执行修改建议。"
+                                      "home_transport_scope为separate时，home_transfers是独立的出发地往返参考，未指定出行日期和时刻，"
+                                      "不参与每日活动时间检查，不因其耗时很长而否决当地行程；目的地之间的换城仍须检查。"
                                       "每日结束语义为last_activity时，仅限制游玩项目结束时间，标记is_return的末尾返程交通可以晚于该时间，但不得跨午夜。"
                                       "代码校验为error的条目不能被豁免。未知数据必须保留不确定说明。"
                                       "issues只列出必须修改方案才能解决的实际约束冲突或虚假确定性声明。"

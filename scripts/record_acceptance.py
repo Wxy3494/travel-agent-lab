@@ -47,12 +47,17 @@ def record(evidence_dir):
                               for row in official["checks"]) if official else "本轮未查询公开官网"
     meituan_path = evidence_dir / "api-check.json"
     meituan = json.loads(meituan_path.read_text(encoding="utf-8")) if meituan_path.is_file() else None
+    earlier_meituan_path = ROOT / "artifacts/meituan-20261031/api-check.json"
+    earlier_meituan = json.loads(earlier_meituan_path.read_text(encoding="utf-8")) if not meituan and earlier_meituan_path.is_file() else None
     snapshot = {"checked_at": datetime.now(ZoneInfo("Asia/Shanghai")).isoformat(),
         "pytest": {**counts, "report_sha256": digest(evidence_dir / "pytest.xml")},
         "ruff": "passed", "pip_check": "passed", "offline": evaluations,
         "historical_live": history, "current_live_end_to_end": "not_rerun_no_paid_model_or_map_calls",
         "meituan_live": {"passed": meituan["passed"], "scope": meituan["scope"],
             "checked_at": meituan["checked_at"], "report_sha256": digest(meituan_path)} if meituan else "not_run",
+        "historical_meituan_live": {"passed": earlier_meituan["passed"], "scope": earlier_meituan["scope"],
+            "checked_at": earlier_meituan["checked_at"], "retested_now": False,
+            "report_sha256": digest(earlier_meituan_path)} if earlier_meituan else None,
         "official_admission_pages": {"verified": official["verified"], "total": official["total"],
             "http_calls": official["http_calls"], "report_sha256": digest(official_path),
             "scope": official["scope"]} if official else "not_run",
@@ -74,13 +79,13 @@ def record(evidence_dir):
 | 离线场景 | v3 {evaluations['v3']['passed']}/{evaluations['v3']['total']}；v2 {evaluations['v2']['passed']}/{evaluations['v2']['total']} | 模型调用为零；已知回归，非盲测 |
 | 发布包界面 | 独立进程解压后运行 AppTest，CSS 加载、JPG 嵌入通过 | 复用本机依赖，未在全新机器安装，未重新做浏览器外观检查 |
 | 真实接口历史 | 2026-10-15 广州两日生成、预算修改、历史及导出；2026-10-16 武汉酒店地址定位有通过记录 | 当前源码有后续修改，本轮未重新发送模型或地图请求 |
-| 美团真实查询 | {'FastAPI 查询、保存、读取和导出通过' if meituan and meituan['passed'] else '本轮未通过'} | 地图/规划角色为隔离夹具；仅美团 CLI 真实请求，不代表真实路线或票务库存验收 |
+| 美团真实查询 | {'FastAPI 查询、保存、读取和导出通过' if meituan and meituan['passed'] else '本轮未重测；此前有通过记录' if earlier_meituan and earlier_meituan['passed'] else '本轮未通过'} | 地图/规划角色为隔离夹具；仅美团 CLI 真实请求，不代表真实路线或票务库存验收 |
 | 官网入场资料 | {str(official['verified']) + '/' + str(official['total']) + ' 个适配场馆实际取得规则' if official else '本轮未查询'} | {official_notes}。常规规则不代表临时公告、实时余量或预约成功 |
 | 真实全覆盖 | 未通过完整验收 | 其他路线、实时房价/房态/余票、七天天气厂商、30天真实规划仍未验收 |
 | Docker、云端 CI | 本轮未运行 | 配置不等于运行证据 |
 | Git 与外发 | 本地基线和修复提交；ZIP 清单记录最终提交与各文件 SHA256 | 无外部推送；未选开源许可证；不能伪称已有远端历史或云端 CI 成绩 |
 
-本轮新增：美团个人开发者旅行资料接入，真实模式按景点和日期自动只读查询，保存/导出参考资料；固定版本 CLI、本机配置、短时缓存、超时和权限错误保留原有行程。文字咨询不改写严格入场结论或把起价当作门票定价，详见 [美团接入](MEITUAN.md)。此前景点入场核验和六项修复继续纳入完整回归。
+本轮调整：新请求默认按已到达目的地安排当地游玩，出发地去程与最终返程交通独立列出，不占每日活动时间；仍核对费用、预算、当地交通、目的地之间换城和入场约束。旧版结果保持原语义，网页重新生成使用新默认方式；详见 [往返交通](HOME_TRANSPORT.md)。此前美团接入、景点核验和六项修复继续纳入完整回归。
 
 浏览器外观检查未完成：Computer Use 辅助程序反复在 sandbox setup 阶段退出；新增面板和交互通过 AppTest，不把它写成截图验收。
 

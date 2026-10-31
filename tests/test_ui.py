@@ -68,7 +68,7 @@ def test_blank_form_lists_all_missing_fields_without_guessing(ui):
     submit_form(ui)
     assert ui.session_state.trip is None
     message = " ".join(item.value for item in ui.warning)
-    for field in ["出发城市", "目的地城市", "出发日期", "旅行天数", "人数", "全团总预算"]:
+    for field in ["出发城市", "目的地城市", "游玩开始日期", "旅行天数", "人数", "全团总预算"]:
         assert field in message
 
 

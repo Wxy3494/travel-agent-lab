@@ -1,11 +1,11 @@
 {
-  "checked_at": "2026-10-31T22:02:20.370794+08:00",
+  "checked_at": "2026-10-31T22:22:53.513785+08:00",
   "pytest": {
-    "tests": 212,
+    "tests": 234,
     "failures": 0,
     "errors": 0,
     "skipped": 0,
-    "report_sha256": "ecb4597c4d52ee09a961294e54cc3dec9f86f8585321ec87afaaad5bc4c437b5"
+    "report_sha256": "450982d49717989120596104dd779e8e7918f3a0cd896c235b3a57ff01d4cdf3"
   },
   "ruff": "passed",
   "pip_check": "passed",
@@ -14,14 +14,14 @@
       "passed": 30,
       "total": 30,
       "model_calls": 0,
-      "report_sha256": "c44e4dd0b32b692d9ebbbe0163adb58f664f3ad4a3af1f2d11b3f7098e92242e",
+      "report_sha256": "2cd2acbcbc6dd5b25099a0352613c7dfdf8914a1f3a121aab0b36faab4d48b00",
       "fixture_sha256": "7182617ae864b8e3c899668866023e8c3b968bb5936d889de831dbf2f1a94d06"
     },
     "v2": {
       "passed": 10,
       "total": 10,
       "model_calls": 0,
-      "report_sha256": "24d0c45c67528606953a365cffb52c1b052e989c078c011cd9998d123117ebd8",
+      "report_sha256": "aed126edf32e9615b8afa811132eb8804dbeb77f61a7b2029490f5a7801d5e04",
       "fixture_sha256": "239245320f76b8d12a0fb2a37884e47f6007cc51268112baca9ca9373049d95c"
     }
   },
@@ -42,10 +42,12 @@
     }
   ],
   "current_live_end_to_end": "not_rerun_no_paid_model_or_map_calls",
-  "meituan_live": {
+  "meituan_live": "not_run",
+  "historical_meituan_live": {
     "passed": true,
     "scope": "live_Meituan_CLI_via_FastAPI_with_fixture_maps_and_demo_agents",
     "checked_at": "2026-10-31T21:58:32.799482+08:00",
+    "retested_now": false,
     "report_sha256": "238e0cb95ccc9d862de70789d613d00fceb7c283970890114f793a39f64791c5"
   },
   "official_admission_pages": "not_run",
@@ -69,9 +71,9 @@
     "app/__init__.py": "ac3292647f51210329bdf6a0433d4d3891abeea78999b046cd31787657382260",
     "app/adjustments.py": "c859241980872eb54a7a2ac2310103abbb337f823b0fb7b9b03fc0e8b9d2b87c",
     "app/admissions.py": "a2b7c6595884d9c3995ce4f8481733edc3abfeea51f5356d5b5f19dfd5bf9368",
-    "app/agents.py": "dd879f5c947f96544b236b420b9e46e01e60dadd5a5d6f1784badf5f6c51f381",
+    "app/agents.py": "87b4b67fb02b80cd58b727517127c22ae4939462388fcff93882a2e15d8278ac",
     "app/assets/coastal-evening.jpg": "0d689929c55e2be3d970d60aaec5bcecb05d0863ea6fce58d0e58dbded1cc848",
-    "app/audit.py": "7e5dcacea957e0b3610c16dc83762700950bd674acbfeaca43ecf65f95946440",
+    "app/audit.py": "5c8172225a874a53485b4faeae7518ad2d1e363503e0ec5fd8ec3592743cb6b5",
     "app/config.py": "5bd4ea4d391dc91690f6e2a53ba02b7a6a62180cd20ec2eb8e1ec1797108126a",
     "app/day_input.py": "6479f2cedfcf2ae5915f7c75454b4bac7b0d5df59e12fc08a55990c854d7e2e6",
     "app/history.py": "c6ab5e60ad9bbe73f04293fea56c2dfff6c6e02e21a760c14d8cb323d367f27a",
@@ -80,14 +82,14 @@
     "app/meituan.py": "480181400dcfa9dd5c5b5a2dea13a6dbacd89bc1fc4e4d90694a5e5858a4b5bd",
     "app/model_client.py": "a81a02b5fdfcffb603d506865d561843bbcd94ed699f28816fde014b6bd0ecb8",
     "app/names.py": "b03c39cf0b4a065e89097d94ea697a1bea6b19f6e12c4625a427479b34b60202",
-    "app/planning.py": "fa257a5b7417f72e54eb45a26f69c3db120b497c710e49ec1c8aaa587c49a140",
-    "app/presentation.py": "25bd1e95c050f336771116516799af3467bd9b3a43331c3fbb416e62a80bff46",
+    "app/planning.py": "bfeda6d8e840673e42218d04d0a48291ccf5f2d45dfd387abf045816698c4f64",
+    "app/presentation.py": "0038994fded7959a618eeaa32993bd46719e74ace6352221a0c48acda4007f1d",
     "app/providers.py": "04d08f10b12a9d5daa433a9cdb96e59d00db1d11194ff414fa86f9b44fedb203",
-    "app/render.py": "219e75d3543b2c73dcb4197e451f3d9abad45ebd1c189f814bf9eed766c8222c",
-    "app/schemas.py": "94eff76a0080016e32b65f1fa2ab33a2dbee7d5109e046154068b138f5f28052",
+    "app/render.py": "385a3db56d5137873c73048636eb8431b0241f37f8791fd78048efa4fc4f551d",
+    "app/schemas.py": "8f332345a079a1afa688cefdaa7854a265051f5ee70748c7f2dcf212d1e961da",
     "app/service.py": "1f18e54969272b60a14fe699ffdb7de1e159f80f1eab2f02dad9e768b5229f99",
     "app/storage.py": "393488a932817641574a35e08ff6191de2787e8b3f599a591da500cc024988c8",
-    "app/ui.py": "11a23e6856c3143d9ad3e0e1665fc547b2cc563d6d9b14642f77d508072193d6",
+    "app/ui.py": "b9078bc971d77615d50f714b3750d751f491c4e9c5a68a52886acf9af5b36364",
     "app/ui_theme.css": "08ff4ef14f6f10fcd72118d544295e54df29a74c309232221732948b1e477d02",
     "app/weather.py": "41453b15018a118cba7b417eadac5cb1523dc7e58fee2ccafec8df4dbb92464f",
     "compose.yaml": "f029dafd977a5e93140e6df31d822678b5f65eb50efcd408bbfdb705c299e9e3",
@@ -110,7 +112,7 @@
     "scripts/evaluate.py": "319a063c418cd9906d30ef6b718521ad052cfb9e2b7f63b52b90ba4633bc31bb",
     "scripts/live_smoke.py": "acf18697240d8beca9edff5185216b90fed4eea318fcd6c8159a50c108e0797a",
     "scripts/package_public.py": "1ab24273df2e406d1365bb423b1e7e36f85cfe878dfb20cde2e478e78c4cb5e0",
-    "scripts/record_acceptance.py": "898b41d7bd2ea83370f8c78efae5dc40c399d20b671c355f539696e2e68e3ae3",
+    "scripts/record_acceptance.py": "914626c66dc84638742a9bfbbd4fb78c06bb0559903c15d75893e0a9849f50c1",
     "scripts/setup_meituan.py": "4b795004c066c1b0bcfdf02c66b9d6e9638a80d6eaf2a87feb84e0ee7b065d6d",
     "scripts/start.ps1": "8310a4137102a616cb8b594e8beb6309ae73d498173bcbbdbed9618f158c7ec8",
     "tests/conftest.py": "90a53b4228895dc29ab4d5fe5b8c3eb031764cb7c77602d1449244b409da6c80",
@@ -119,13 +121,14 @@
     "tests/test_agents.py": "545f1279b57af54d4a2d20e2c677edbf6da5d9ed809fba6ea39dc935a0d9c618",
     "tests/test_chat.py": "b27ead497f2a06f25ee13c18472174b9f51deb46146b1f73cadac8e43706e347",
     "tests/test_extended.py": "3b17c5b6700d7471297109788385c8d48e417c85516e250837a538ae91ef4e91",
+    "tests/test_home_transport.py": "bec38643aad2ea04aa3d9c4cdd9dacc5cc34b6b1ed2eb3d19d2d7efe9c5ea1d4",
     "tests/test_itinerary_experience.py": "80a310f979d92f33c8f4318da2a70797952aa7143a4c9375e66f394423ea68c2",
     "tests/test_meituan.py": "e990fcda22ab7cc8c3027a53543bdce874a67ded35a7caa5d93f826ce0fa7eee",
     "tests/test_providers.py": "77f11246d16c84979809011b4950539de9cb317e54019237cd38f5b2a8d0fbca",
     "tests/test_review_fixes.py": "edaf568e290dab6bb78ecc611bac4cfca28e81c97f0f3d6a6a35f174889a5b98",
     "tests/test_service.py": "ae2f82e27300cd1097ad140a16d580e73719d630cf75cec797aa342d434e830d",
-    "tests/test_ui.py": "0d7d9d0ee41503aee507aa02d894278f1e596aa6199f988f922717ecaddb6714",
-    "tests/test_user_features.py": "cbc74cc7ecc182c68e437e00b959fdfe0dc7c753744207cdc7e9e3b1206abc76",
+    "tests/test_ui.py": "999c4d54c792bdc6c364eb134a8b0a3e2124eb6e43a0f939b2e5843b3e0870ad",
+    "tests/test_user_features.py": "e883511bc3dd4d5658d8f90b960a975df232dd43080af7568780381b4549e9ca",
     "启动行旅.cmd": "aced435ca8698149de173837559392715d378613ac3c69186c6e4d7ea1caa91a"
   }
 }

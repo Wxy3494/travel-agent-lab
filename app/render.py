@@ -26,6 +26,16 @@ def render_markdown(trip):
         lines += ["## 待补充", ""] + [f"- {escape(q)}" for q in trip.questions] + [""]
     if c.daily_end_scope == "last_activity":
         lines += [f"出游时间：{c.daily_start:%H:%M}从住处出发，最后一个游玩项目在{c.daily_end:%H:%M}前结束；随后返程单独计算。", ""]
+    if c.home_transport_scope == "separate":
+        lines += ["当地游玩按已到达目的地安排；出发地往返交通不占每日游玩时间，实际交通日期、车次和到达时刻另行确认。", ""]
+    transfers = [t for day in trip.days for t in day.home_transfers]
+    if transfers:
+        lines += ["## 出发地往返交通（单独安排）", ""]
+        for t in transfers:
+            label = "去程" if t.direction == "outbound" else "返程"
+            lines += [f"- {label}：{escape(t.from_city)} → {escape(t.to_city)}；路线参考约{t.estimated_minutes // 60}小时{t.estimated_minutes % 60}分钟；全团费用估算 ¥{t.cost.low:.2f}–{t.cost.high:.2f}",
+                      "  " + escape(t.note)]
+        lines.append("")
     for mapping in trip.name_normalizations:
         lines += [f"城市名称：{escape(mapping['submitted'])} → {escape(mapping['canonical'])}", ""]
     if c.bindings:

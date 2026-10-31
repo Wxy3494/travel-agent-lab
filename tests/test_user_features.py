@@ -41,7 +41,7 @@ def test_day_limits_and_chinese_thirty_are_consistent():
         Constraints(days=31)
 
 
-async def test_impossible_intercity_transfer_stops_without_repeating_on_each_day(service, constraints):
+async def test_in_day_impossible_intercity_transfer_stops_without_repeating_on_each_day(service, constraints):
     calls = []
 
     class SlowTransfer(FixtureProvider):
@@ -51,7 +51,7 @@ async def test_impossible_intercity_transfer_stops_without_repeating_on_each_day
             return {**route, "minutes": 2000}
 
     service.provider_factory = SlowTransfer
-    c = Constraints.model_validate({**constraints.model_dump(), "cities": ["深圳"], "days": 4})
+    c = Constraints.model_validate({**constraints.model_dump(), "cities": ["深圳"], "days": 4, "home_transport_scope": "in_day"})
     trip = await service.create(TripRequest(constraints=c))
     assert trip.status == "needs_review"
     assert len(calls) == 1 and not trip.days

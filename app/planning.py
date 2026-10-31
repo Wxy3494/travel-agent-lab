@@ -7,7 +7,17 @@ from urllib.parse import urlencode
 
 from app.admissions import admission_issues, confirmation
 from app.names import excluded_ids, must_ids
-from app.schemas import Budget, BudgetItem, DayChoice, DayPlan, Event, Issue, PriceRange, Selection
+from app.schemas import (
+    Budget,
+    BudgetItem,
+    DayChoice,
+    DayPlan,
+    Event,
+    HomeTransfer,
+    Issue,
+    PriceRange,
+    Selection,
+)
 from app.weather import itinerary_weather
 
 
@@ -179,6 +189,35 @@ async def materialize(c, selection, facts, provider, previous=None, reuse_days=N
     planned_ids = {pid for day in selection.days for pid in day.place_ids}
     admission_map = {(check.place_id, check.on_date): check for check in visit_checks or []}
 
+    async def home_transfer(from_city, to_city, direction, day):
+        # No departure/arrival clock is invented for journeys outside local sightseeing.
+        points = [(location(from_city, "hotel_id", facts[from_city].location), from_city),
+                  (location(from_city, "departure_station_id", location(from_city, "hotel_id", facts[from_city].location)), from_city),
+                  (location(to_city, "arrival_station_id", facts[to_city].location), to_city),
+                  (location(to_city, "hotel_id", facts[to_city].location), to_city)]
+        prices, sources, segments, durations = [], [], [], []
+        for (start_point, start_city), (end_point, end_city) in pairwise(points):
+            if start_point == end_point and start_city == end_city:
+                continue
+            route = await provider.route(start_point, end_point, facts[start_city].citycode, facts[end_city].citycode, c.transport)
+            if route["minutes"] <= 0:
+                raise ValueError("Route must have positive duration")
+            prices.append(route["cost"])
+            sources.extend([route["evidence_id"], route.get("cost_evidence_id", route["evidence_id"])])
+            segments.extend(route.get("segments", []))
+            durations.append(route["minutes"] + (45 if start_city != end_city else 10))
+        unit_price = sum_prices(prices)
+        quantity = cars if c.transport == "driving" else c.people
+        cost = scaled(unit_price, quantity)
+        title = ("去程交通：" if direction == "outbound" else "返程交通：") + f"{from_city} → {to_city}"
+        items.append(BudgetItem(category=title, quantity=quantity, unit="车" if c.transport == "driving" else "人",
+                                unit_price=unit_price, total=cost, evidence_id=sources[-1], day=day))
+        return HomeTransfer(direction=direction, from_city=from_city, to_city=to_city,
+            estimated_minutes=sum(durations), unit_price=unit_price, cost=cost,
+            evidence_ids=list(dict.fromkeys(sources)), start_location=points[0][0], end_location=points[-1][0],
+            route_segments=segments,
+            note="往返交通单独安排，不占每日游玩时间。耗时与费用按查询路线估算，含接驳和换乘预留；出行日期、实际车次及到达时间尚未确定。")
+
     for chosen in selection.days:
         local = facts[chosen.city]
         today = c.start_date + timedelta(days=chosen.day - 1)
@@ -194,6 +233,14 @@ async def materialize(c, selection, facts, provider, previous=None, reuse_days=N
             previous_city = chosen.city
             position = location(chosen.city, "hotel_id", local.location)
             continue
+        home_transfers = []
+        if c.home_transport_scope == "separate" and chosen.day == 1 and previous_city != chosen.city:
+            home_transfers.append(await home_transfer(c.origin, chosen.city, "outbound", chosen.day))
+            previous_city = chosen.city
+            position = location(chosen.city, "hotel_id", local.location)
+            hotel = anchors.get(chosen.city, {}).get("hotel_id")
+            departure_note = (f"抵达目的地后，从 {hotel.name} 开始当天游玩。" if hotel else
+                              f"抵达目的地后，从{chosen.city}住宿区域开始游玩；未填写住处，路程按城市中心估算。")
         cursor, end_limit, rule = day_window(c, chosen.day)
         events = []
         if cursor >= end_limit:
@@ -272,12 +319,13 @@ async def materialize(c, selection, facts, provider, previous=None, reuse_days=N
         preserved = {e.place_id for e in events if e.kind == "visit"}
         ids = [pid for pid in chosen.place_ids if pid not in preserved]
         comparison = {}
-        destination = (location(c.origin, "arrival_station_id", origin_facts.location) if chosen.day == c.days and c.return_to_origin
+        in_day_return = chosen.day == c.days and c.return_to_origin and c.home_transport_scope == "in_day"
+        destination = (location(c.origin, "arrival_station_id", origin_facts.location) if in_day_return
                        else location(chosen.city, "hotel_id", local.location))
         if chosen.day == c.days and not c.return_to_origin:
             destination = location(chosen.city, "departure_station_id", destination)
         if (c.optimize_routes and len(ids) > 1 and not c.opening_rules and previous_city == chosen.city
-                and not (chosen.day == c.days and c.return_to_origin and chosen.city != c.origin)):
+                and not (in_day_return and chosen.city != c.origin)):
             ids, comparison = await optimize_order(ids, available, position, destination, local, c, provider,
                                                    remaining_days=c.days - chosen.day)
         for pid in ids:
@@ -352,15 +400,17 @@ async def materialize(c, selection, facts, provider, previous=None, reuse_days=N
             relaxed_now = rule and rule.pace == "relaxed" and (rule.period == "day" or cursor >= 13 * 60)
             if c.daily_end_scope == "return" or pid != ids[-1]:
                 pause("rest", 30 if relaxed_now else 20, "自由休息", position)
-        if chosen.day == c.days and c.return_to_origin:
+        if in_day_return:
             if previous_city != c.origin:
                 await travel(location(previous_city, "departure_station_id", position), previous_city, "前往返程出发车站", is_return=True)
             await travel(location(c.origin, "arrival_station_id", origin_facts.location), c.origin, f"返回 {c.origin}", is_return=True)
         else:
             hotel = anchors.get(chosen.city, {}).get("hotel_id")
-            departure_point = anchors.get(chosen.city, {}).get("departure_station_id") if chosen.day == c.days else None
+            departure_point = anchors.get(chosen.city, {}).get("departure_station_id") if chosen.day == c.days and not c.return_to_origin else None
             await travel(destination, chosen.city, f"到达离开车站 {departure_point.name}" if departure_point else
                          f"返回 {hotel.name}" if hotel else f"返回 {chosen.city} 住宿区域（按城市中心估算）", is_return=True)
+            if chosen.day == c.days and c.return_to_origin and c.home_transport_scope == "separate" and chosen.city != c.origin:
+                home_transfers.append(await home_transfer(chosen.city, c.origin, "return", chosen.day))
         weather_details = [itinerary_weather(city, today, facts[city].weather,
             demo=any(provider.evidence[eid].kind == "fixture" for eid in facts[city].evidence_ids if eid in provider.evidence))
             for city in weather_cities]
@@ -380,6 +430,7 @@ async def materialize(c, selection, facts, provider, previous=None, reuse_days=N
                             weather=weather, alternative=alternative, reason=chosen.reason,
                             weather_details=weather_details, departure_note=departure_note,
                             travel_minutes=duration_minutes, route_comparison=comparison,
+                            home_transfers=home_transfers,
                             indoor_options=[p for p in local.places if p.indoor is True and p.id not in planned_ids
                                             and p.id not in excluded_ids(c) and p.name not in c.excluded][:5]))
     for category, quantity, unit, price in [

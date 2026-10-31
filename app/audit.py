@@ -21,12 +21,28 @@ def audit_result(result):
     if [city for i, city in enumerate(cities) if i == 0 or city != cities[i - 1]] != c.cities:
         problems.add("city_order")
     known = {e.id for e in result.evidence}
-    names, pids = set(), []
+    names, pids, home_legs = set(), [], []
     for day in days:
         if day.date != c.start_date + timedelta(days=day.day - 1):
             problems.add("date_sequence")
         if day.overnight_city != (day.city if day.day < c.days else None):
             problems.add("overnight_city")
+        for transfer in day.home_transfers:
+            home_legs.append((day.day, transfer.direction, transfer.from_city, transfer.to_city))
+            if not set(transfer.evidence_ids) <= known:
+                problems.add("source_missing")
+            quantity = ceil(c.people / 4) if c.transport == "driving" else c.people
+            title = ("去程交通：" if transfer.direction == "outbound" else "返程交通：") + f"{transfer.from_city} → {transfer.to_city}"
+            rows = [i for i in result.budget.items if i.day == day.day and i.category == title] if result.budget else []
+            if (len(rows) != 1 or rows[0].event_start is not None or rows[0].quantity != quantity
+                    or rows[0].evidence_id not in transfer.evidence_ids):
+                problems.add("home_transport")
+            for bound in ("low", "high"):
+                expected_cost = (Decimal(str(getattr(transfer.unit_price, bound))) * quantity).quantize(Decimal("0.01"))
+                if (abs(expected_cost - Decimal(str(getattr(transfer.cost, bound)))) > Decimal("0.005")
+                        or rows and (abs(getattr(rows[0].unit_price, bound) - getattr(transfer.unit_price, bound)) > .005
+                                     or abs(getattr(rows[0].total, bound) - getattr(transfer.cost, bound)) > .005)):
+                    problems.add("home_transport")
         previous = 0
         rule = next((r for r in c.day_rules if r.day == day.day), None)
         lower, upper = c.daily_start, c.daily_end
@@ -119,6 +135,14 @@ def audit_result(result):
             problems.add("travel_minutes")
         if any(h.evidence_id not in known for h in day.hotel_options):
             problems.add("source_missing")
+    expected_home = []
+    if c.home_transport_scope == "separate":
+        if c.origin != c.cities[0]:
+            expected_home.append((1, "outbound", c.origin, c.cities[0]))
+        if c.return_to_origin and c.cities[-1] != c.origin:
+            expected_home.append((c.days, "return", c.cities[-1], c.origin))
+    if sorted(home_legs) != sorted(expected_home):
+        problems.add("home_transport")
     if len(pids) != len(set(pids)):
         problems.add("duplicate_place")
     bound_must = [b for b in c.bindings if b.field == "must_visit"]
