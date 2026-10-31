@@ -1,0 +1,9 @@
+{
+  "description": "Known extension regression cases, not blind travel quality evaluation",
+  "protocol_version": 2,
+  "case_file_sha256": "239245320f76b8d12a0fb2a37884e47f6007cc51268112baca9ca9373049d95c",
+  "splits": {
+    "dev": 10,
+    "holdout": 0
+  }
+}

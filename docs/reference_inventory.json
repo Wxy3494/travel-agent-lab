@@ -1,0 +1,52 @@
+{
+  "checked_at": "2026-10-14",
+  "method": "GitHub plugin GET repository trees at pinned commits",
+  "repositories": [
+    {
+      "repo": "redis-developer/amr-autogen-travel-agent",
+      "commit": "c7330fe1eb10947cbcc765d758de5171fb9bada2",
+      "truncated": false,
+      "files": [
+        "pyproject.toml"
+      ]
+    },
+    {
+      "repo": "zinyando/autogen-multi-agent-travel-planner",
+      "commit": "8a5e8269488574c5c5adbb32a4daebd3d5479f08",
+      "truncated": false,
+      "files": [
+        "pyproject.toml"
+      ]
+    },
+    {
+      "repo": "bcefghj/multi-agent-travel-planner",
+      "commit": "8132dfcded4539a4ca28b1c1fc316b93001c0b08",
+      "truncated": false,
+      "files": [
+        "golang/internal/orchestrator/pipeline.go",
+        "java/src/main/java/com/travel/orchestrator/TravelPlanningPipeline.java",
+        "python/orchestrator/pipeline.py",
+        "python/pytest.ini",
+        "python/requirements.txt",
+        "python/tests/__init__.py",
+        "python/tests/test_agents.py"
+      ]
+    },
+    {
+      "repo": "OSU-NLP-Group/TravelPlanner",
+      "commit": "e52c87f4ac348a3410c46dc3553c519db5ec5e23",
+      "truncated": false,
+      "files": [
+        "LICENSE",
+        "database/test_ref_info.jsonl",
+        "evaluation/commonsense_constraint.py",
+        "evaluation/eval.py",
+        "evaluation/hard_constraint.py",
+        "postprocess/example_evaluation.jsonl",
+        "requirements.txt",
+        "tools/notebook/test.py",
+        "tools/planner/test.py"
+      ]
+    }
+  ]
+}

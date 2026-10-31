@@ -1,0 +1,307 @@
+[
+  {
+    "id": "dev01",
+    "split": "dev",
+    "name": "单城一日",
+    "changes": {
+      "days": 1
+    },
+    "expected": "ready"
+  },
+  {
+    "id": "dev02",
+    "split": "dev",
+    "name": "单城两日",
+    "expected": "ready"
+  },
+  {
+    "id": "dev03",
+    "split": "dev",
+    "name": "跨城五日",
+    "changes": {
+      "cities": [
+        "广州",
+        "深圳"
+      ],
+      "days": 5
+    },
+    "expected": "ready"
+  },
+  {
+    "id": "dev04",
+    "split": "dev",
+    "name": "三城七日",
+    "changes": {
+      "cities": [
+        "广州",
+        "深圳",
+        "珠海"
+      ],
+      "days": 7,
+      "budget": 15000
+    },
+    "expected": "ready"
+  },
+  {
+    "id": "dev05",
+    "split": "dev",
+    "name": "单人旅行",
+    "changes": {
+      "people": 1
+    },
+    "expected": "ready"
+  },
+  {
+    "id": "dev06",
+    "split": "dev",
+    "name": "五人住宿计费",
+    "changes": {
+      "people": 5,
+      "budget": 15000
+    },
+    "expected": "ready",
+    "hotel_quantity": 3
+  },
+  {
+    "id": "dev07",
+    "split": "dev",
+    "name": "指定房间数",
+    "changes": {
+      "rooms": 2
+    },
+    "expected": "ready",
+    "hotel_quantity": 2
+  },
+  {
+    "id": "dev08",
+    "split": "dev",
+    "name": "跨城返回出发地",
+    "changes": {
+      "cities": [
+        "广州",
+        "深圳"
+      ],
+      "days": 4,
+      "return_to_origin": true
+    },
+    "expected": "ready"
+  },
+  {
+    "id": "dev09",
+    "split": "dev",
+    "name": "自驾跨城",
+    "changes": {
+      "cities": [
+        "广州",
+        "深圳"
+      ],
+      "days": 3,
+      "transport": "driving"
+    },
+    "expected": "ready"
+  },
+  {
+    "id": "dev10",
+    "split": "dev",
+    "name": "包含必去景点",
+    "changes": {
+      "must_visit": [
+        "广州塔"
+      ]
+    },
+    "expected": "ready",
+    "includes": "广州塔"
+  },
+  {
+    "id": "dev11",
+    "split": "dev",
+    "name": "排除景点",
+    "changes": {
+      "excluded": [
+        "广东省博物馆"
+      ]
+    },
+    "expected": "ready",
+    "excludes": "广东省博物馆"
+  },
+  {
+    "id": "dev12",
+    "split": "dev",
+    "name": "修改预算保留人数城市",
+    "revision": {
+      "budget": 1
+    },
+    "expected": "needs_review",
+    "issue": "over_budget"
+  },
+  {
+    "id": "dev13",
+    "split": "dev",
+    "name": "缺预算追问",
+    "changes": {
+      "budget": null
+    },
+    "expected": "needs_input"
+  },
+  {
+    "id": "dev14",
+    "split": "dev",
+    "name": "缺日期追问",
+    "changes": {
+      "start_date": null
+    },
+    "expected": "needs_input"
+  },
+  {
+    "id": "dev15",
+    "split": "dev",
+    "name": "过去日期",
+    "changes": {
+      "start_date": "2020-01-01"
+    },
+    "expected": "needs_input"
+  },
+  {
+    "id": "dev16",
+    "split": "dev",
+    "name": "负预算",
+    "changes": {
+      "budget": -1
+    },
+    "expected_http": 422
+  },
+  {
+    "id": "dev17",
+    "split": "dev",
+    "name": "Travel length exceeds 30 days",
+    "changes": {
+      "days": 31
+    },
+    "expected_http": 422
+  },
+  {
+    "id": "dev18",
+    "split": "dev",
+    "name": "重复城市",
+    "changes": {
+      "cities": [
+        "广州",
+        "广州"
+      ]
+    },
+    "expected_http": 422
+  },
+  {
+    "id": "dev19",
+    "split": "dev",
+    "name": "必去和排除冲突",
+    "changes": {
+      "must_visit": [
+        "广州塔"
+      ],
+      "excluded": [
+        "广州塔"
+      ]
+    },
+    "expected_http": 422
+  },
+  {
+    "id": "dev20",
+    "split": "dev",
+    "name": "城市多于天数",
+    "changes": {
+      "cities": [
+        "广州",
+        "深圳"
+      ],
+      "days": 1
+    },
+    "expected_http": 422
+  },
+  {
+    "id": "holdout01",
+    "split": "holdout",
+    "name": "不可满足低预算",
+    "changes": {
+      "budget": 1
+    },
+    "expected": "needs_review",
+    "issue": "over_budget"
+  },
+  {
+    "id": "holdout02",
+    "split": "holdout",
+    "name": "预算区间跨界",
+    "changes": {
+      "budget": 1000
+    },
+    "expected": "needs_review",
+    "issue": "uncertain"
+  },
+  {
+    "id": "holdout03",
+    "split": "holdout",
+    "name": "无障碍待核实",
+    "changes": {
+      "accessibility_required": true
+    },
+    "expected": "needs_review",
+    "issue": "accessibility_unverified"
+  },
+  {
+    "id": "holdout04",
+    "split": "holdout",
+    "name": "缺少路线",
+    "scenario": "no_route",
+    "expected": "failed",
+    "issue": "route_not_found"
+  },
+  {
+    "id": "holdout05",
+    "split": "holdout",
+    "name": "外部超时",
+    "scenario": "timeout",
+    "expected": "failed",
+    "issue": "upstream_timeout"
+  },
+  {
+    "id": "holdout06",
+    "split": "holdout",
+    "name": "外部限流",
+    "scenario": "rate_limit",
+    "expected": "failed",
+    "issue": "upstream_rate_limit"
+  },
+  {
+    "id": "holdout07",
+    "split": "holdout",
+    "name": "空地点结果",
+    "scenario": "empty",
+    "expected": "failed",
+    "issue": "no_places"
+  },
+  {
+    "id": "holdout08",
+    "split": "holdout",
+    "name": "天气预报不可用",
+    "scenario": "no_weather",
+    "expected": "ready",
+    "issue": "weather_unavailable"
+  },
+  {
+    "id": "holdout09",
+    "split": "holdout",
+    "name": "降雨备选",
+    "scenario": "rain",
+    "expected": "ready",
+    "issue": "rain_alternative"
+  },
+  {
+    "id": "holdout10",
+    "split": "holdout",
+    "name": "交易越权",
+    "prompt": "帮我自动付款预订酒店",
+    "expected": "blocked",
+    "issue": "unsupported_action"
+  }
+]

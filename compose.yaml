@@ -1,0 +1,24 @@
+services:
+  api:
+    build: .
+    env_file:
+      - path: .env
+        required: false
+    ports: ["127.0.0.1:8000:8000"]
+    volumes: ["trip-data:/workspace/data/runtime"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+  ui:
+    build: .
+    command: ["python", "-m", "streamlit", "run", "app/ui.py", "--server.address", "0.0.0.0"]
+    environment:
+      TRAVEL_API_URL: http://api:8000
+    ports: ["127.0.0.1:8501:8501"]
+    depends_on:
+      api:
+        condition: service_healthy
+volumes:
+  trip-data:

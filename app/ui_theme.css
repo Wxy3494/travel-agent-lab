@@ -1,0 +1,294 @@
+:root { color-scheme: dark; }
+
+[data-testid="stAppViewContainer"],
+[data-testid="stMain"] {
+  background: #071324;
+  color: #f5f8fc;
+}
+
+[data-testid="stHeader"] {
+  background: #071324;
+}
+
+/* 本地使用时隐藏框架自带的发布入口和开发菜单。 */
+.stAppDeployButton,
+#MainMenu {
+  display: none !important;
+}
+
+[data-testid="stSidebar"] {
+  background: #0d1e32;
+  border-right: 1px solid #294157;
+}
+
+.block-container {
+  max-width: 1160px;
+  padding-top: 3.25rem;
+  padding-bottom: 2.5rem;
+}
+
+.travel-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 48px;
+  margin-bottom: 8px;
+  color: #f7fbff;
+}
+
+.travel-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 24px;
+  font-weight: 750;
+  letter-spacing: .04em;
+}
+
+.travel-brand-mark {
+  display: inline-grid;
+  place-items: center;
+  width: 31px;
+  height: 31px;
+  border-radius: 10px;
+  background: #f2836e;
+  color: #102138;
+  font-size: 22px;
+}
+
+.travel-mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 11px;
+  border-radius: 999px;
+  background: #142b3e;
+  color: #bfd4df;
+  font-size: 12px;
+}
+
+.travel-mode::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #66dbbf;
+  box-shadow: 0 0 8px #66dbbf;
+}
+
+.travel-hero {
+  position: relative;
+  height: 345px;
+  overflow: hidden;
+  border-radius: 18px;
+  background: #18334f;
+}
+
+.travel-hero img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 54%;
+}
+
+.travel-hero::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgba(5,16,34,.91) 0%, rgba(5,16,34,.74) 27%, rgba(5,16,34,.28) 59%, rgba(5,16,34,.04) 100%),
+              linear-gradient(0deg, rgba(5,14,27,.42), transparent 45%);
+}
+
+.travel-hero-copy {
+  position: absolute;
+  z-index: 1;
+  top: 54px;
+  left: 6%;
+  max-width: 510px;
+}
+
+.travel-hero-kicker {
+  color: #ffbd9d;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .16em;
+}
+
+.travel-hero h1 {
+  margin: 18px 0 13px;
+  color: #fff;
+  font-size: clamp(32px, 4vw, 46px);
+  line-height: 1.18;
+  font-weight: 750;
+  letter-spacing: .02em;
+  text-shadow: 0 3px 13px rgba(0,0,0,.18);
+}
+
+.travel-hero h1 em {
+  color: #ffac8a;
+  font-style: normal;
+}
+
+.travel-hero-copy p {
+  max-width: 380px;
+  margin: 0;
+  color: #e6eef6;
+  font-size: 14px;
+  line-height: 1.8;
+}
+
+.st-key-planning_section {
+  position: relative;
+  z-index: 2;
+  width: calc(100% - 52px);
+  margin: -57px 26px 0;
+}
+
+.st-key-planning_section [data-testid="stForm"] {
+  padding: 24px 27px 22px;
+  border: 1px solid #304962;
+  border-radius: 18px;
+  background: #102036;
+  box-shadow: 0 19px 34px rgba(0,0,0,.27);
+}
+
+.st-key-planning_section .travel-form-kicker {
+  margin: 0 0 2px;
+  color: #ff9c7e;
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: .22em;
+}
+
+.st-key-planning_section h3 {
+  color: #f9fbff;
+  font-size: 23px;
+  font-weight: 700;
+}
+
+.st-key-planning_section [data-testid="stWidgetLabel"] p,
+.st-key-planning_section label p {
+  color: #aec2d4;
+  font-size: 12px;
+}
+
+.st-key-planning_section [data-baseweb="input"] > div,
+.st-key-planning_section [data-baseweb="base-input"],
+.st-key-planning_section [data-baseweb="select"] > div,
+.st-key-planning_section [data-testid="stTextInputRootElement"],
+.st-key-planning_section [data-testid="stNumberInputContainer"],
+.st-key-planning_section [data-testid="stDateInputField"] {
+  border: 1px solid #354e68;
+  border-radius: 10px;
+  background: #192d46;
+  color: #f7fbff;
+}
+
+.st-key-planning_section [data-testid="stTextInputRootElement"]:focus-within,
+.st-key-planning_section [data-testid="stNumberInputContainer"]:focus-within,
+.st-key-planning_section [data-testid="stDateInputField"]:focus-within {
+  border-color: #70d9ce;
+}
+
+.st-key-planning_section [data-testid="stDateInputField"] [data-placeholder="true"][data-type="year"],
+.st-key-planning_section [data-testid="stDateInputField"] [data-placeholder="true"][data-type="month"],
+.st-key-planning_section [data-testid="stDateInputField"] [data-placeholder="true"][data-type="day"] {
+  font-size: 0;
+}
+
+.st-key-planning_section [data-testid="stDateInputField"] [data-placeholder="true"][data-type="year"]::after,
+.st-key-planning_section [data-testid="stDateInputField"] [data-placeholder="true"][data-type="month"]::after,
+.st-key-planning_section [data-testid="stDateInputField"] [data-placeholder="true"][data-type="day"]::after {
+  color: #849db3;
+  font-size: 14px;
+}
+
+.st-key-planning_section [data-testid="stDateInputField"] [data-placeholder="true"][data-type="year"]::after {
+  content: "年";
+}
+
+.st-key-planning_section [data-testid="stDateInputField"] [data-placeholder="true"][data-type="month"]::after {
+  content: "月";
+}
+
+.st-key-planning_section [data-testid="stDateInputField"] [data-placeholder="true"][data-type="day"]::after {
+  content: "日";
+}
+
+.st-key-planning_section input {
+  color: #f7fbff;
+}
+
+.st-key-planning_section input::placeholder {
+  color: #849db3;
+}
+
+.st-key-planning_section [data-testid="stFormSubmitButton"] button {
+  min-height: 43px;
+  border: 0;
+  border-radius: 10px;
+  background: linear-gradient(110deg, #ffad7e, #f47568);
+  box-shadow: 0 8px 19px rgba(240,112,98,.2);
+  color: #132239;
+  font-size: 14px;
+  font-weight: 750;
+}
+
+.st-key-planning_section [data-testid="stFormSubmitButton"] button:hover {
+  background: linear-gradient(110deg, #ffba90, #fa8577);
+  color: #132239;
+}
+
+.st-key-planning_section [data-testid="stExpander"] {
+  border-color: #344d66;
+  background: #14263d;
+}
+
+.travel-intro-strip {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  margin: 18px 26px 0;
+  padding: 15px 18px;
+  border-radius: 11px;
+  background: #0d2034;
+  color: #e7f1f7;
+}
+
+.travel-intro-symbol {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  background: #194450;
+  color: #75e2d1;
+  font-size: 21px;
+}
+
+.travel-intro-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 12px;
+}
+
+.travel-intro-copy small {
+  color: #9eb4c5;
+  font-size: 11px;
+}
+
+@media (max-width: 760px) {
+  .block-container { padding-left: 1rem; padding-right: 1rem; }
+  .travel-mode { display: none; }
+  .travel-hero { height: 310px; }
+  .travel-hero-copy { top: 35px; left: 23px; right: 20px; }
+  .travel-hero h1 { font-size: 32px; }
+  .travel-hero-copy p { max-width: 275px; font-size: 12px; }
+  .st-key-planning_section { width: calc(100% - 20px); margin: -52px 10px 0; }
+  .st-key-planning_section [data-testid="stForm"] { padding: 20px 17px; }
+  .travel-intro-strip { margin: 15px 10px 0; }
+}

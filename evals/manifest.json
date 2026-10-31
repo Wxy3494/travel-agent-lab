@@ -1,0 +1,39 @@
+{
+  "frozen_at": "2026-10-14",
+  "case_file_sha256": "928b2813c793f9324915a927f0a81d209d78ade163c72064051660bb631b1c55",
+  "dev": [
+    "dev01",
+    "dev02",
+    "dev03",
+    "dev04",
+    "dev05",
+    "dev06",
+    "dev07",
+    "dev08",
+    "dev09",
+    "dev10",
+    "dev11",
+    "dev12",
+    "dev13",
+    "dev14",
+    "dev15",
+    "dev16",
+    "dev17",
+    "dev18",
+    "dev19",
+    "dev20"
+  ],
+  "holdout": [
+    "holdout01",
+    "holdout02",
+    "holdout03",
+    "holdout04",
+    "holdout05",
+    "holdout06",
+    "holdout07",
+    "holdout08",
+    "holdout09",
+    "holdout10"
+  ],
+  "interpretation": "Frozen regression acceptance; previously visible and executed, not a blind holdout"
+}

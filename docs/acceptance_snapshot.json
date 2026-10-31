@@ -1,0 +1,82 @@
+{
+  "checked_at": "2026-10-14T16:01:18.4435511+08:00",
+  "pytest": {
+    "note": "Full suite, plus seven UI tests rechecked after final display formatting",
+    "failures": 0,
+    "tests": 104,
+    "errors": 0
+  },
+  "ruff": "passed",
+  "pip_check": "passed",
+  "offline": {
+    "passed": 30,
+    "model_calls": 0,
+    "frozen_cases_unchanged": true,
+    "total": 30
+  },
+  "offline_v2": {
+    "protocol_version": 2,
+    "passed": 10,
+    "independent_blind_test": false,
+    "model_calls": 0,
+    "total": 10
+  },
+  "ui": {
+    "history_recovery_and_compare": "passed_browser_API_and_AppTest",
+    "candidate_confirmation": "passed_browser_and_AppTest",
+    "app_tests": 7,
+    "mode": "demo",
+    "layout": "six visible fields, single-amount budgets, collapsed advanced options, text revisions below results",
+    "scoped_revision": "passed_browser_and_behavior_tests",
+    "screenshots": [
+      "extended-home.png",
+      "extended-candidates.png",
+      "extended-afternoon.png",
+      "extended-history.png"
+    ]
+  },
+  "api": "passed_running_demo_extended_smoke",
+  "mock_live_chain": "passed_HTTP_MockTransport_and_AutoGen_Replay_not_external_live",
+  "desktop_launcher": "passed_cold_start_and_health_reuse; default browser opening verified previously",
+  "live_model_comparison": "blocked_missing_key",
+  "live_end_to_end": "blocked_missing_keys",
+  "docker_static_config": "passed_source_review_not_compose_validation",
+  "docker": "blocked_missing_cli",
+  "cloud_ci": "not_run",
+  "independent_learning": "not_evaluated",
+  "source_sha256": {
+    "app/__init__.py": "ac3292647f51210329bdf6a0433d4d3891abeea78999b046cd31787657382260",
+    "app/adjustments.py": "599ddee19e597c06a4e563abf64a9d2dba66d75f6b7fa28916ca6f1d64136d24",
+    "app/agents.py": "7b479238e160670577ffb05c4830d99aad3681d0b69122fa811ab0bd2485e915",
+    "app/audit.py": "401c3e685a678440ab75e0582b45dbf9718060b4ae8e9a47c682bce76ffde46e",
+    "app/config.py": "c180285fbaa4234e9de58c7adb6a64e4227fca1a723c890e04cf3d3b230921f1",
+    "app/history.py": "c6ab5e60ad9bbe73f04293fea56c2dfff6c6e02e21a760c14d8cb323d367f27a",
+    "app/input_parser.py": "ac3a6b9a4a7611319d0a8c2db70b78051694083c60266c22f8d93cc6f85d8b98",
+    "app/main.py": "4c406b85446e07f78b94d4fded1730bab3fec4a209732e18c7581d7a23d8dd8a",
+    "app/model_client.py": "a81a02b5fdfcffb603d506865d561843bbcd94ed699f28816fde014b6bd0ecb8",
+    "app/names.py": "6baa1e335d8568120e91d15a612b01542ddd92868c8fa7141da3cda8c1946164",
+    "app/planning.py": "24bbdec235ed31cc3aaa178d169a287d1c55445dd39b7139258b8b7ba7fd04ee",
+    "app/providers.py": "497058cec15a258e74a47219364d93b15e862dfb48ee4e738777d3ae258fc9a2",
+    "app/render.py": "42a2b2dd5cc07b96e26cd712a298ebdcbb7481fa5611f00953087902be6bec5e",
+    "app/schemas.py": "f5a098ca259933ef787ded23cdace72b88f8f2c6bcfc4bc45fb82679ec8a9196",
+    "app/service.py": "6395cec0d1d695dd61ef09d0a5adb162036fc969ad6f1c06392d6bf7a1e41562",
+    "app/storage.py": "393488a932817641574a35e08ff6191de2787e8b3f599a591da500cc024988c8",
+    "app/ui.py": "36755b07ca99cac787709861b09d982be2b3a48304e7b035e288a868f76cb7e6",
+    "scripts/api_smoke.py": "22e9a0ca2c5247a8116f398ff829c22cab3686ccdf9db52246966f2efccb5ef3",
+    "scripts/capability_probe.py": "1983f9b428131e30d8ad9ba4a4d9e92fc66abe4580ac59dd079544b0f722e8f9",
+    "scripts/desktop_launcher.py": "0992ec01223e4b71993cbe461d73cf7c329a0b4593c76642d1bd74de431ab018",
+    "scripts/doctor.py": "32910bc5e57a01b9d9f2762bb11471fc0a43fbdbe22ea344570653b1fe8ae7f2",
+    "scripts/evaluate.py": "bf3813c85bd0cb3f64b0e2836942872e0a716dc78c3590c50366a35df72d4a52",
+    "scripts/live_smoke.py": "acf18697240d8beca9edff5185216b90fed4eea318fcd6c8159a50c108e0797a",
+    "scripts/package_public.py": "a1cada49dce56fe9a5969901d52d1928aeb44420543eb8d95e89481463de9dd0",
+    "tests/conftest.py": "90a53b4228895dc29ab4d5fe5b8c3eb031764cb7c77602d1449244b409da6c80",
+    "tests/test_acceptance.py": "46992e22062d061fd4d15d899a71818ea3f695f73a5bc5d0b1f2b1d4cad32c44",
+    "tests/test_agents.py": "545f1279b57af54d4a2d20e2c677edbf6da5d9ed809fba6ea39dc935a0d9c618",
+    "tests/test_chat.py": "b27ead497f2a06f25ee13c18472174b9f51deb46146b1f73cadac8e43706e347",
+    "tests/test_extended.py": "36bc16851ad1d4aeb5217e297331938c496c2bb5a5b28d901db56cf340c8c4c0",
+    "tests/test_providers.py": "c23f31004dd9f3dc9febe42b000471d30b745bbcbc61ce0b0b6de3880c7214e0",
+    "tests/test_service.py": "8d3327de9fd5a5659bb2909fa88a40ca7b0b730bbce4c69bf2a5b6d26865ab02",
+    "tests/test_ui.py": "b824cf69491e635bdc027666b4ed3b0120f8f3c63743f0ecac45737d13061f0f",
+    "requirements.lock": "3715ae8b8bcdd7bb50b9b49abac2a1988f71018fbd0699870e29d869bb7f5579"
+  }
+}

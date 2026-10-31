@@ -1,0 +1,12 @@
+[
+  {"id":"ext01","split":"dev","name":"正常规划与明确休息","expected":"ready"},
+  {"id":"ext02","split":"dev","name":"城市全称与样例别名","changes":{"origin":"广州市","cities":["广州市"],"must_visit":["广东博物馆"]},"expected":"ready","includes":"广东省博物馆"},
+  {"id":"ext03","split":"dev","name":"到达离开时间窗","changes":{"arrival_time":"17:00","departure_time":"13:00"},"expected":"ready","first_start_after":"17:00","last_end_before":"13:00"},
+  {"id":"ext04","split":"dev","name":"简称候选与显式确认","changes":{"must_visit":["博物"]},"initial_expected":"needs_input","followup":{"changes":{"place_choices":{"must_visit:博物":"440100_0"}}},"expected":"ready","includes":"广东省博物馆"},
+  {"id":"ext05","split":"dev","name":"只修改第二天下午","followup":{"target_day":2,"target_period":"afternoon","changes":{"day_rules":[{"day":2,"period":"afternoon","start":"13:00","end":"18:00","visit_minutes":30}]}},"expected":"ready","preserved_day":1},
+  {"id":"ext06","split":"dev","name":"第二天下午轻松节奏","followup":{"instruction":"第二天轻松一点，只安排下午的活动"},"expected":"ready","preserved_day":1,"day2_start_after":"13:00"},
+  {"id":"ext07","split":"dev","name":"预算冲突后选择调整","changes":{"budget":1},"initial_expected":"needs_review","followup":{"adjustment_id":"increase_budget"},"expected":"ready"},
+  {"id":"ext08","split":"dev","name":"必去地点已提供闭馆信息","changes":{"days":1,"must_visit":["广州塔"]},"closed_fixture":"440100_1","expected":"needs_review","issue":"opening_conflict"},
+  {"id":"ext09","split":"dev","name":"已选酒店参与接驳","changes":{"anchors":{"广州":{"hotel_id":"440100_hotel_east"}}},"expected":"ready"},
+  {"id":"ext10","split":"dev","name":"过窄时间窗保留冲突","changes":{"days":1,"arrival_time":"20:00","departure_time":"20:30","must_visit":["广州塔"]},"expected":"needs_review","issue":"time_window"}
+]

@@ -1,0 +1,43 @@
+{
+  "frozen_at": "2026-10-16",
+  "case_file_sha256": "7182617ae864b8e3c899668866023e8c3b968bb5936d889de831dbf2f1a94d06",
+  "dev": [
+    "dev01",
+    "dev02",
+    "dev03",
+    "dev04",
+    "dev05",
+    "dev06",
+    "dev07",
+    "dev08",
+    "dev09",
+    "dev10",
+    "dev11",
+    "dev12",
+    "dev13",
+    "dev14",
+    "dev15",
+    "dev16",
+    "dev17",
+    "dev18",
+    "dev19",
+    "dev20"
+  ],
+  "holdout": [
+    "holdout01",
+    "holdout02",
+    "holdout03",
+    "holdout04",
+    "holdout05",
+    "holdout06",
+    "holdout07",
+    "holdout08",
+    "holdout09",
+    "holdout10"
+  ],
+  "interpretation": "Frozen regression acceptance; previously visible and executed, not a blind holdout",
+  "protocol_version": 3,
+  "previous_case_file": "evals/cases.json",
+  "previous_case_file_sha256": "928b2813c793f9324915a927f0a81d209d78ade163c72064051660bb631b1c55",
+  "migration": "User changed maximum trip length from 7 to 30 days; dev17 now rejects 31 days. All other cases unchanged."
+}
