@@ -64,12 +64,74 @@ def test_admission_details_confirmation_and_refresh(ui):
     assert ui.session_state.trip["metrics"]["model_calls"] == 0
 
 
-def test_blank_form_lists_all_missing_fields_without_guessing(ui):
+def test_blank_form_marks_each_missing_field_without_a_generic_warning(ui):
     submit_form(ui)
     assert ui.session_state.trip is None
-    message = " ".join(item.value for item in ui.warning)
-    for field in ["出发城市", "目的地城市", "游玩开始日期", "旅行天数", "人数", "全团总预算"]:
+    message = " ".join(item.value for item in ui.error)
+    for field in ["出发地", "目的地", "游玩开始日期", "旅行天数", "人数", "全团总预算"]:
         assert field in message
+    assert len(ui.error) == 6 and not ui.warning
+    assert set(ui.session_state.form_errors) == {"form_origin", "form_destinations", "form_date", "form_days", "form_people", "form_budget"}
+
+
+def test_room_error_is_specific_and_clears_on_edit_without_submitting_or_resetting_input(ui, service):
+    fill_example(ui)
+    ui.number_input(key="form_rooms").set_value(3)
+    submit_form(ui)
+    assert set(ui.session_state.form_errors) == {"form_rooms"}
+    assert "2人" in ui.error[0].value and "3间" in ui.error[0].value
+    assert ui.session_state.form_expand_details is True
+    assert service.repository.list() == [] and ui.session_state.trip is None
+    ui.number_input(key="form_people").set_value(3).run()
+    assert not ui.exception and not ui.error and ui.session_state.form_errors == {}
+    assert ui.number_input(key="form_rooms").value == 3 and ui.number_input(key="form_budget").value == 6000
+    assert service.repository.list() == []
+    submit_form(ui)
+    assert ui.session_state.trip["status"] == "ready" and len(service.repository.list()) == 1
+
+
+def test_valid_two_rooms_two_people_is_not_rejected(ui):
+    fill_example(ui)
+    ui.number_input(key="form_rooms").set_value(2)
+    submit_form(ui)
+    assert not ui.error and ui.session_state.trip["status"] == "ready"
+    assert ui.session_state.trip["constraints"]["rooms"] == 2
+
+
+def test_form_reports_all_conflicts_and_clears_each_repaired_field(ui):
+    from datetime import time
+    fill_example(ui)
+    ui.text_input(key="form_destinations").set_value("广州，深圳")
+    ui.number_input(key="form_days").set_value(1)
+    ui.text_input(key="form_must").set_value("广州塔")
+    ui.text_input(key="form_excluded").set_value("广州塔")
+    ui.time_input(key="form_daily_start").set_value(time(22))
+    submit_form(ui)
+    assert set(ui.session_state.form_errors) == {"form_days", "form_must", "form_excluded", "form_daily_start", "form_daily_end"}
+    assert not ui.warning
+    ui.number_input(key="form_days").set_value(2).run()
+    assert "form_days" not in ui.session_state.form_errors and "form_must" in ui.session_state.form_errors
+    ui.text_input(key="form_excluded").set_value("").run()
+    assert "form_must" not in ui.session_state.form_errors and "form_excluded" not in ui.session_state.form_errors
+    ui.time_input(key="form_daily_start").set_value(time(9)).run()
+    assert not ui.error and not ui.session_state.trip
+    submit_form(ui)
+    assert ui.session_state.trip["status"] == "ready"
+
+
+async def test_shorter_form_does_not_inherit_hidden_old_day_four_setting(ui, service):
+    from app.schemas import Constraints, TripRequest
+    c = Constraints(origin="广州", cities=["广州"], start_date=datetime.now(ZoneInfo("Asia/Shanghai")).date() + timedelta(days=1),
+        days=4, people=2, budget=6000, day_place_ids={4: ["440100_13"]})
+    previous = await service.create(TripRequest(constraints=c))
+    ui.session_state.trip = previous.model_dump(mode="json")
+    ui.session_state.sync_form = previous.constraints.model_dump(mode="json")
+    ui.run()
+    ui.number_input(key="form_days").set_value(2).run()
+    assert any("重新安排" in c.value for c in ui.caption)
+    submit_form(ui)
+    assert not ui.error and ui.session_state.trip["version"] == 2 and ui.session_state.trip["status"] == "ready"
+    assert ui.session_state.trip["constraints"]["day_place_ids"] == {}
 
 
 def test_thirty_day_form_hotels_and_automatic_weather(ui):

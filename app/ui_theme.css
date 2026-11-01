@@ -146,7 +146,7 @@
   margin: -57px 26px 0;
 }
 
-.st-key-planning_section [data-testid="stForm"] {
+.st-key-planning_section .st-key-trip_form {
   padding: 24px 27px 22px;
   border: 1px solid #304962;
   border-radius: 18px;
@@ -225,7 +225,7 @@
   color: #849db3;
 }
 
-.st-key-planning_section [data-testid="stFormSubmitButton"] button {
+.st-key-planning_section [data-testid="stButton"] button[kind="primary"] {
   min-height: 43px;
   border: 0;
   border-radius: 10px;
@@ -236,7 +236,7 @@
   font-weight: 750;
 }
 
-.st-key-planning_section [data-testid="stFormSubmitButton"] button:hover {
+.st-key-planning_section [data-testid="stButton"] button[kind="primary"]:hover {
   background: linear-gradient(110deg, #ffba90, #fa8577);
   color: #132239;
 }
@@ -244,6 +244,26 @@
 .st-key-planning_section [data-testid="stExpander"] {
   border-color: #344d66;
   background: #14263d;
+}
+
+/* Error text stays inside the field wrapper, directly below its own control. */
+.st-key-planning_section [class*="st-key-field_form_"]:has([data-testid="stAlert"]) [data-testid="stTextInputRootElement"],
+.st-key-planning_section [class*="st-key-field_form_"]:has([data-testid="stAlert"]) [data-testid="stNumberInputContainer"],
+.st-key-planning_section [class*="st-key-field_form_"]:has([data-testid="stAlert"]) [data-testid="stDateInputField"],
+.st-key-planning_section [class*="st-key-field_form_"]:has([data-testid="stAlert"]) textarea,
+.st-key-planning_section [class*="st-key-field_form_"]:has([data-testid="stAlert"]) [data-baseweb="select"] > div {
+  border-color: #f17d88;
+  box-shadow: 0 0 0 1px #f17d88;
+}
+
+.st-key-planning_section [class*="st-key-field_form_"] [data-testid="stAlertContainer"] {
+  padding: 7px 9px;
+  border-radius: 7px;
+}
+
+.st-key-planning_section [class*="st-key-field_form_"] [data-testid="stAlert"] p {
+  font-size: 12px;
+  line-height: 1.6;
 }
 
 .travel-intro-strip {
@@ -289,6 +309,6 @@
   .travel-hero h1 { font-size: 32px; }
   .travel-hero-copy p { max-width: 275px; font-size: 12px; }
   .st-key-planning_section { width: calc(100% - 20px); margin: -52px 10px 0; }
-  .st-key-planning_section [data-testid="stForm"] { padding: 20px 17px; }
+  .st-key-planning_section .st-key-trip_form { padding: 20px 17px; }
   .travel-intro-strip { margin: 15px 10px 0; }
 }

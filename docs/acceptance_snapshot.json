@@ -1,11 +1,11 @@
 {
-  "checked_at": "2026-10-31T22:22:53.513785+08:00",
+  "checked_at": "2026-11-01T11:41:19.680283+08:00",
   "pytest": {
-    "tests": 234,
+    "tests": 262,
     "failures": 0,
     "errors": 0,
     "skipped": 0,
-    "report_sha256": "450982d49717989120596104dd779e8e7918f3a0cd896c235b3a57ff01d4cdf3"
+    "report_sha256": "9bb86c3d7ae23170c309e76ae74a77c926e215e3bb64af23938dd2bdbaa70f05"
   },
   "ruff": "passed",
   "pip_check": "passed",
@@ -14,14 +14,14 @@
       "passed": 30,
       "total": 30,
       "model_calls": 0,
-      "report_sha256": "2cd2acbcbc6dd5b25099a0352613c7dfdf8914a1f3a121aab0b36faab4d48b00",
+      "report_sha256": "560bde5e08716d10c2ad64525344c0c3e90490926714b525df5a85a52273f4f0",
       "fixture_sha256": "7182617ae864b8e3c899668866023e8c3b968bb5936d889de831dbf2f1a94d06"
     },
     "v2": {
       "passed": 10,
       "total": 10,
       "model_calls": 0,
-      "report_sha256": "aed126edf32e9615b8afa811132eb8804dbeb77f61a7b2029490f5a7801d5e04",
+      "report_sha256": "9646344940ff5095e4a2060438095a5fa955bd7397cea8b1353a940223f01c29",
       "fixture_sha256": "239245320f76b8d12a0fb2a37884e47f6007cc51268112baca9ca9373049d95c"
     }
   },
@@ -51,7 +51,22 @@
     "report_sha256": "238e0cb95ccc9d862de70789d613d00fceb7c283970890114f793a39f64791c5"
   },
   "official_admission_pages": "not_run",
-  "current_ui": "AppTest_including_isolated_archive_extraction; no_new_browser_visual_check",
+  "current_ui": "AppTest_and_isolated_installed_browser",
+  "browser_ui": {
+    "passed": true,
+    "browser": "151.0.7922.172",
+    "checks": [
+      "six missing values each shown under its own field",
+      "correcting fields clears errors without creating a trip",
+      "room mismatch shown immediately below room input with red border and actual counts",
+      "submitting an error inside collapsed options reveals the problem",
+      "two people two rooms submits once and produces ready itinerary",
+      "no browser JavaScript errors"
+    ],
+    "scope": "isolated demo API, real installed browser, no live model/map/ticket calls",
+    "checked_at": "2026-11-01T11:40:33.368017+08:00",
+    "report_sha256": "370aa2905de8721e55b32c31924823b6aecee187703a46298f169580f2ceba55"
+  },
   "delivery": {
     "type": "source_only_using_existing_dependencies",
     "fresh_machine_install": "not_run",
@@ -76,6 +91,7 @@
     "app/audit.py": "5c8172225a874a53485b4faeae7518ad2d1e363503e0ec5fd8ec3592743cb6b5",
     "app/config.py": "5bd4ea4d391dc91690f6e2a53ba02b7a6a62180cd20ec2eb8e1ec1797108126a",
     "app/day_input.py": "6479f2cedfcf2ae5915f7c75454b4bac7b0d5df59e12fc08a55990c854d7e2e6",
+    "app/form_validation.py": "f16b72b15f6ab875206ba886ee5557a2a02e9790e7461b6f8d55e478268a8315",
     "app/history.py": "c6ab5e60ad9bbe73f04293fea56c2dfff6c6e02e21a760c14d8cb323d367f27a",
     "app/input_parser.py": "f09284d50570f891eb9a8957cd89147393bc9a14a711881fa601eaf00b08ded9",
     "app/main.py": "4589f5d539a1c1d6ffbf9a2cc774a9126ce70f73fe1487ebed0aee9a0eaf06c7",
@@ -89,8 +105,8 @@
     "app/schemas.py": "8f332345a079a1afa688cefdaa7854a265051f5ee70748c7f2dcf212d1e961da",
     "app/service.py": "1f18e54969272b60a14fe699ffdb7de1e159f80f1eab2f02dad9e768b5229f99",
     "app/storage.py": "393488a932817641574a35e08ff6191de2787e8b3f599a591da500cc024988c8",
-    "app/ui.py": "b9078bc971d77615d50f714b3750d751f491c4e9c5a68a52886acf9af5b36364",
-    "app/ui_theme.css": "08ff4ef14f6f10fcd72118d544295e54df29a74c309232221732948b1e477d02",
+    "app/ui.py": "a9f16a5c196aecce3f7641b96933b1d58e3fe6abda6007bbc8909f5717d6d237",
+    "app/ui_theme.css": "9fb74ca9d6ccfdb83a2439e5775f34edf302d52afd5a6de8c1e416ee772b8155",
     "app/weather.py": "41453b15018a118cba7b417eadac5cb1523dc7e58fee2ccafec8df4dbb92464f",
     "compose.yaml": "f029dafd977a5e93140e6df31d822678b5f65eb50efcd408bbfdb705c299e9e3",
     "Dockerfile": "799c5b49f7f679418dec8fa1c6b36ea35a61d35efbb2b215f5df507dcbb7ac67",
@@ -100,11 +116,12 @@
     "evals/extensions-v2.json": "239245320f76b8d12a0fb2a37884e47f6007cc51268112baca9ca9373049d95c",
     "evals/manifest-v3.json": "fa255a22baa97b4c97810b52f6671cf55e3f7a0775b2ce6b5f7597df36dfe759",
     "evals/manifest.json": "c38a0ff8438f05d163b0c7932c512d7cfeafedca0e820f3979a0a2615ff15761",
-    "pyproject.toml": "9f3e2cda7841a3dd4da807b3a2e9742089e6553eaddbe2e4d2b9ba6e6b5af80e",
+    "pyproject.toml": "ba127cad2da884ecc31ac8bdf4888aa3f90ae961add919bc7bec750748d52ff2",
     "requirements.lock": "3715ae8b8bcdd7bb50b9b49abac2a1988f71018fbd0699870e29d869bb7f5579",
     "scripts/api_smoke.py": "04777db3694fa45d4429872ff5f739dec85c8afc9b4e785a074af33ba0470f3c",
     "scripts/capability_probe.py": "7473072e77893c108256710ae16af0144776a741a7f6ab09c375b8f36aff7e78",
     "scripts/check_admissions.py": "00e1246f50057334d02cb1246c03f6bd86163ef6a5db916b8f25f3b96fb355f0",
+    "scripts/check_form_browser.py": "73efd2c29ed397bfb9b8a32e046c2cc0921e28cb8e10cda54fab2c463f4732e6",
     "scripts/check_meituan.py": "232b952eb61a6a2d8a58f468be3c6977f964ba3ab231157c884f6e58d413890e",
     "scripts/check_release.py": "26afbfbb7e11b5f2c9ae3c648add846fe9ed69d7ea4bb4aa647a100d101a0fa7",
     "scripts/desktop_launcher.py": "0992ec01223e4b71993cbe461d73cf7c329a0b4593c76642d1bd74de431ab018",
@@ -112,7 +129,7 @@
     "scripts/evaluate.py": "319a063c418cd9906d30ef6b718521ad052cfb9e2b7f63b52b90ba4633bc31bb",
     "scripts/live_smoke.py": "acf18697240d8beca9edff5185216b90fed4eea318fcd6c8159a50c108e0797a",
     "scripts/package_public.py": "1ab24273df2e406d1365bb423b1e7e36f85cfe878dfb20cde2e478e78c4cb5e0",
-    "scripts/record_acceptance.py": "914626c66dc84638742a9bfbbd4fb78c06bb0559903c15d75893e0a9849f50c1",
+    "scripts/record_acceptance.py": "cb6b0e5e868ada4306c47f20dfc0481244880d20f6b8f17c817c990b893aef63",
     "scripts/setup_meituan.py": "4b795004c066c1b0bcfdf02c66b9d6e9638a80d6eaf2a87feb84e0ee7b065d6d",
     "scripts/start.ps1": "8310a4137102a616cb8b594e8beb6309ae73d498173bcbbdbed9618f158c7ec8",
     "tests/conftest.py": "90a53b4228895dc29ab4d5fe5b8c3eb031764cb7c77602d1449244b409da6c80",
@@ -121,13 +138,14 @@
     "tests/test_agents.py": "545f1279b57af54d4a2d20e2c677edbf6da5d9ed809fba6ea39dc935a0d9c618",
     "tests/test_chat.py": "b27ead497f2a06f25ee13c18472174b9f51deb46146b1f73cadac8e43706e347",
     "tests/test_extended.py": "3b17c5b6700d7471297109788385c8d48e417c85516e250837a538ae91ef4e91",
+    "tests/test_form_validation.py": "466d284af9d233f35e26b76b8997b0a212aea0a17945b30402be972f2bfc6266",
     "tests/test_home_transport.py": "bec38643aad2ea04aa3d9c4cdd9dacc5cc34b6b1ed2eb3d19d2d7efe9c5ea1d4",
     "tests/test_itinerary_experience.py": "80a310f979d92f33c8f4318da2a70797952aa7143a4c9375e66f394423ea68c2",
     "tests/test_meituan.py": "e990fcda22ab7cc8c3027a53543bdce874a67ded35a7caa5d93f826ce0fa7eee",
     "tests/test_providers.py": "77f11246d16c84979809011b4950539de9cb317e54019237cd38f5b2a8d0fbca",
     "tests/test_review_fixes.py": "edaf568e290dab6bb78ecc611bac4cfca28e81c97f0f3d6a6a35f174889a5b98",
     "tests/test_service.py": "ae2f82e27300cd1097ad140a16d580e73719d630cf75cec797aa342d434e830d",
-    "tests/test_ui.py": "999c4d54c792bdc6c364eb134a8b0a3e2124eb6e43a0f939b2e5843b3e0870ad",
+    "tests/test_ui.py": "cdb783db36114fb26a444dcf60b6a13a432681f251ec08d174d6bc4933c796ff",
     "tests/test_user_features.py": "e883511bc3dd4d5658d8f90b960a975df232dd43080af7568780381b4549e9ca",
     "启动行旅.cmd": "aced435ca8698149de173837559392715d378613ac3c69186c6e4d7ea1caa91a"
   }

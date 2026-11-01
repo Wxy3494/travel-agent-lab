@@ -11,9 +11,9 @@ from zoneinfo import ZoneInfo
 import httpx
 import streamlit as st
 from dotenv import load_dotenv
-from pydantic import ValidationError
 
 from app.config import client_read_timeout
+from app.form_validation import FORM_DEFAULTS, validate_form
 from app.presentation import (
     admission_summary,
     day_description,
@@ -23,7 +23,7 @@ from app.presentation import (
     weather_line,
 )
 from app.render import escape, render_markdown
-from app.schemas import MAX_TRIP_DAYS, Constraints, TripResult
+from app.schemas import MAX_TRIP_DAYS, TripResult
 from app.service import blocked_input
 
 load_dotenv()
@@ -36,41 +36,6 @@ HERO_IMAGE = "data:image/jpeg;base64," + base64.b64encode(
     (ASSETS / "coastal-evening.jpg").read_bytes()).decode("ascii")
 st.markdown("<style>" + Path(__file__).with_name("ui_theme.css").read_text(encoding="utf-8") + "</style>",
             unsafe_allow_html=True)
-
-FORM_DEFAULTS = {
-    "form_origin": "", "form_destinations": "", "form_date": None, "form_days": None,
-    "form_people": None, "form_budget": None, "form_interests": "", "form_must": "",
-    "form_excluded": "", "form_transport": "public", "form_return": False, "form_accessible": False,
-    "form_rooms": 0, "form_hotel_budget": None, "form_food_budget": None, "form_ticket_budget": None,
-    "form_price_ranges": {},
-    "form_lodging": "",
-    "form_pricing_note": "项目预算假设，非实时价格；请用自己的报价调整",
-    "form_daily_start": time(9), "form_daily_end": time(21, 30),
-}
-
-
-def split_names(value):
-    return [v.strip() for v in value.replace("，", ",").replace("、", ",").split(",") if v.strip()]
-
-
-def lodging_inputs(text, cities):
-    result = {}
-    for line in text.splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        parts = line.replace("：", ":", 1).split(":", 1)
-        if len(parts) == 2:
-            city, address = (p.strip() for p in parts)
-        elif len(cities) == 1:
-            city, address = cities[0], line
-        else:
-            raise ValueError("多个城市请每行填写“城市：完整酒店名称或地址”。")
-        if city in result:
-            raise ValueError(f"{city}重复填写了住处，请每个城市保留一个住宿地址。")
-        result[city] = address
-    return result
-
 
 def constraint_text(field, value):
     if value is None or value == [] or value == {}:
@@ -133,6 +98,9 @@ def sync_form(c):
         if price:
             values["form_price_ranges"][label] = price
     st.session_state.update(values)
+    st.session_state.form_validation_started = False
+    st.session_state.form_errors = {}
+    st.session_state.form_expand_details = False
 
 
 def request(method, path, payload=None):
@@ -264,6 +232,9 @@ def show_trip(trip, latest):
 
 st.session_state.setdefault("trip", None)
 st.session_state.setdefault("revision_notes", [])
+st.session_state.setdefault("form_validation_started", False)
+st.session_state.setdefault("form_errors", {})
+st.session_state.setdefault("form_expand_details", False)
 form_initialized = "form_origin" in st.session_state
 for key, value in FORM_DEFAULTS.items():
     st.session_state.setdefault(key, value)
@@ -279,6 +250,9 @@ with st.sidebar:
         st.session_state.update(FORM_DEFAULTS)
         st.session_state.revision_notes = []
         st.session_state.trip = None
+        st.session_state.form_validation_started = False
+        st.session_state.form_errors = {}
+        st.session_state.form_expand_details = False
         st.session_state.pop("weather_report", None)
         st.rerun()
     health = request("GET", "/health")
@@ -335,37 +309,59 @@ st.markdown(f"""<section class="travel-hero" aria-label="旅行规划首页">
   </div>
 </section>""", unsafe_allow_html=True)
 
-with st.container(key="planning_section"), st.form("trip_form", border=True):
+field_slots = {}
+
+
+def form_field(parent, widget_type, label, key, **kwargs):
+    with parent.container(key="field_" + key):
+        value = getattr(st, widget_type)(label, key=key, **kwargs)
+        field_slots[key] = st.empty()
+        return value
+
+
+def begin_form_validation():
+    # Button callbacks run before widgets are rebuilt, so a collapsed panel can
+    # be reopened without an extra rerun interrupting the user's next edit.
+    st.session_state.form_validation_started = True
+    checked = validate_form({key: st.session_state[key] for key in FORM_DEFAULTS}, st.session_state.trip, TODAY)
+    main_fields = {"form", "form_origin", "form_destinations", "form_date", "form_days", "form_people", "form_budget"}
+    if set(checked.errors) - main_fields:
+        st.session_state.form_expand_details = True
+
+
+with st.container(key="planning_section"), st.container(key="trip_form", border=False):
     st.markdown('<div class="travel-form-kicker">规划你的旅行</div>', unsafe_allow_html=True)
     st.subheader("开启一段旅行")
     st.caption("下面六项为必填信息。多城旅行按目的地顺序安排。")
     st.caption("开始日期与天数对应目的地当地游玩；出发地往返交通的实际日期另行安排。")
     a, b, c = st.columns(3)
-    origin = a.text_input("出发地", key="form_origin", placeholder="例如：广州", max_chars=60)
-    destinations = b.text_input("目的地（按顺序，用逗号分隔）", key="form_destinations",
+    field_slots["form"] = st.empty()
+    origin = form_field(a, "text_input", "出发地", key="form_origin", placeholder="例如：广州", max_chars=60)
+    destinations = form_field(b, "text_input", "目的地（按顺序，用逗号分隔）", key="form_destinations",
                                 placeholder="例如：广州，深圳", max_chars=185)
-    start = c.date_input("游玩开始日期", key="form_date", value=None,
+    start = form_field(c, "date_input", "游玩开始日期", key="form_date", value=None,
                          min_value=min(TODAY, st.session_state.form_date or TODAY), format="YYYY/MM/DD")
     a, b, c = st.columns(3)
-    days = a.number_input("旅行天数", key="form_days", min_value=1, max_value=MAX_TRIP_DAYS,
+    days = form_field(a, "number_input", "旅行天数", key="form_days", min_value=1, max_value=MAX_TRIP_DAYS,
                           value=None, step=1, placeholder="1～30天")
-    people = b.number_input("随行人数", key="form_people", min_value=1, max_value=10,
+    people = form_field(b, "number_input", "出行总人数（含本人）", key="form_people", min_value=1, max_value=10,
                             value=None, step=1, placeholder="1～10人")
-    budget = c.number_input("全团总预算（人民币 / 元）", key="form_budget", min_value=1.0,
+    budget = form_field(c, "number_input", "全团总预算（人民币 / 元）", key="form_budget", min_value=1.0,
                             max_value=1_000_000.0, value=None, step=100.0, placeholder="例如：6000")
     previous = st.session_state.trip
     hint_col, submit_col = st.columns([3, 1], vertical_alignment="bottom")
     hint_col.caption("还有偏好或时间要求？可展开填写下方选项。")
-    submit = submit_col.form_submit_button(
+    form_feedback = hint_col.empty()
+    submit = submit_col.button(
         "重新生成行程" if previous and previous["status"] != "blocked" else "生成旅行计划",
-        type="primary", width="stretch")
-    details = st.expander("＋ 添加旅行偏好与详细要求（可选）")
+        type="primary", width="stretch", on_click=begin_form_validation)
+    details = st.expander("＋ 添加旅行偏好与详细要求（可选）", key="form_expand_details", on_change="rerun")
     with details:
         st.markdown("**兴趣与出行偏好**")
-        interests = st.text_input("兴趣（逗号分隔）", key="form_interests", placeholder="博物馆，公园，美食")
+        interests = form_field(st, "text_input", "兴趣（逗号分隔）", key="form_interests", placeholder="博物馆，公园，美食")
         a, b = st.columns(2)
-        must = a.text_input("必去地点", key="form_must", placeholder="例如：广州塔")
-        excluded = b.text_input("排除地点", key="form_excluded", placeholder="例如：白云山")
+        must = form_field(a, "text_input", "必去地点", key="form_must", placeholder="例如：广州塔")
+        excluded = form_field(b, "text_input", "排除地点", key="form_excluded", placeholder="例如：白云山")
         transport = st.radio("交通方式", ["public", "driving"], key="form_transport", horizontal=True,
                              format_func=lambda v: "公共交通" if v == "public" else "自驾")
         a, b = st.columns(2)
@@ -373,64 +369,46 @@ with st.container(key="planning_section"), st.form("trip_form", border=True):
         accessible = b.checkbox("有无障碍需求（需核实设施）", key="form_accessible")
     with details:
         st.markdown("**住宿与费用预算**")
-        lodging = st.text_area("酒店或住宿地址（可选）", key="form_lodging", height=90, max_chars=1000,
+        lodging = form_field(st, "text_area", "酒店或住宿地址（可选）", key="form_lodging", height=90, max_chars=1000,
             placeholder="单城可直接填完整酒店名称或地址。多城每行一项，例如：\n武汉：酒店完整名称（含分店）\n长沙：街道门牌地址")
         st.caption("填写后会先核对位置，再计算每天从住处出发和返回的路程；未填的城市按住宿区域（城市中心）估算。")
         st.caption("每项填一个预算金额即可。不填则自动估算；修改已有行程时，未填写的项目沿用当前估算。费用不代表实时价格。")
-        rooms = st.number_input("房间数（0表示按每间2人估算）", key="form_rooms", min_value=0, max_value=10, step=1)
-        prices = {}
+        rooms = form_field(st, "number_input", "房间数（0表示按每间2人估算）", key="form_rooms", min_value=0, max_value=10, step=1)
         for label, field in [("hotel", "每间每晚住宿"), ("food", "每人每天餐饮"), ("ticket", "每人每处门票")]:
-            amount = st.number_input(field + "预算 / 元", key=f"form_{label}_budget", min_value=0.0,
+            amount = form_field(st, "number_input", field + "预算 / 元", key=f"form_{label}_budget", min_value=0.0,
                                      max_value=1_000_000.0, value=None, placeholder="不填则自动估算")
-            if amount is not None:
-                prices[label] = {"low": amount, "high": amount}
-            elif label in st.session_state.form_price_ranges:
-                prices[label] = st.session_state.form_price_ranges[label]
-        pricing_note = st.session_state.form_pricing_note
-        if any(st.session_state[f"form_{label}_budget"] is not None for label in ("hotel", "food", "ticket")):
-            pricing_note = "住宿、餐饮与门票按填写的预算或现有估算计算，非实时价格；实际费用可能变化。"
     with details:
         st.markdown("**每天的出游时间**")
         st.caption("按旅行所在地时间计算。开始指从住处出发，结束指最后一个游玩项目结束；返回住处的交通另计，不支持跨午夜。")
         st.caption("默认按已到达目的地安排当地游玩。出发地往返交通单独估算，不占每日游玩时间；目的地之间的换城仍计入当天安排。")
         a, b = st.columns(2)
-        daily_start = a.time_input("每天从住处出发", key="form_daily_start")
-        daily_end = b.time_input("最后一个游玩项目结束", key="form_daily_end")
+        daily_start = form_field(a, "time_input", "每天从住处出发", key="form_daily_start")
+        daily_end = form_field(b, "time_input", "最后一个游玩项目结束", key="form_daily_end")
+
 if submit:
-    try:
-        previous_constraints = previous["constraints"] if previous else {}
-        advanced = {key: st.session_state.trip["constraints"].get(key, {}) for key in
-                    ["anchors", "day_place_ids", "place_choices", "indoor_sources"]} if st.session_state.trip else {}
-        advanced["opening_rules"] = st.session_state.trip["constraints"].get("opening_rules", []) if st.session_state.trip else []
-        advanced["reservations"] = st.session_state.trip["constraints"].get("reservations", []) if st.session_state.trip else []
-        rules = [r for r in previous_constraints.get("day_rules", []) if days and r["day"] <= days]
-        constraints = Constraints(origin=origin.strip() or None, cities=split_names(destinations), start_date=start,
-            days=days, people=people, budget=budget, interests=split_names(interests), must_visit=split_names(must),
-            excluded=split_names(excluded), transport=transport, return_to_origin=return_home,
-            accessibility_required=accessible, rooms=rooms or None, pricing_note=pricing_note,
-            arrival_time=None, departure_time=None, daily_start=daily_start, daily_end=daily_end,
-            daily_end_scope="last_activity", home_transport_scope="separate", lodging_addresses=lodging_inputs(lodging, split_names(destinations)),
-            visit_minutes=previous_constraints.get("visit_minutes", 90), day_rules=rules, **advanced,
-            **{field: prices[label] for label, field in [("hotel", "hotel_per_room_night"),
-                ("food", "food_per_person_day"), ("ticket", "ticket_per_person_visit")] if label in prices})
-        missing = ["游玩开始日期" if label == "出发日期" else label for label in constraints.missing()]
-        if missing:
-            st.warning("请补充：" + "、".join(missing))
+    st.session_state.form_validation_started = True
+checked = validate_form({key: st.session_state[key] for key in FORM_DEFAULTS}, previous, TODAY)
+visible_errors = checked.errors if st.session_state.form_validation_started else {}
+st.session_state.form_errors = visible_errors
+for key, slot in field_slots.items():
+    if key in visible_errors:
+        slot.error("\n\n".join(visible_errors[key]))
+    elif key in checked.notes:
+        slot.caption("\n\n".join(checked.notes[key]))
+if visible_errors:
+    form_feedback.caption(f"有{len(visible_errors)}处信息需要调整，提示已标在对应输入框下方。")
+if submit and not checked.errors:
+    constraints = checked.constraints
+    with st.spinner("正在查询地点、安排路线并检查预算…"):
+        if previous and previous["status"] != "blocked":
+            trip = request("POST", f"/trips/{previous['id']}/revise",
+                {"base_version": previous["version"], "changes": constraints.model_dump(mode="json")})
         else:
-            with st.spinner("正在查询地点、安排路线并检查预算…"):
-                if previous and previous["status"] != "blocked":
-                    trip = request("POST", f"/trips/{previous['id']}/revise",
-                        {"base_version": previous["version"], "changes": constraints.model_dump(mode="json")})
-                else:
-                    trip = request("POST", "/trips", {"constraints": constraints.model_dump(mode="json"), "strategy": strategy})
-            if trip:
-                st.session_state.trip = trip
-                st.session_state.sync_form = trip["constraints"]
-                st.rerun()
-    except ValidationError:
-        st.warning("请检查输入：城市不能重复，天数不能少于城市数量，必去与排除不能冲突，房间数不能超过人数；活动时间须在同一天内，指定日序不能超过旅行天数。")
-    except ValueError as exc:
-        st.warning(str(exc))
+            trip = request("POST", "/trips", {"constraints": constraints.model_dump(mode="json"), "strategy": strategy})
+    if trip:
+        st.session_state.trip = trip
+        st.session_state.sync_form = trip["constraints"]
+        st.rerun()
 
 trip = st.session_state.trip
 if trip:
