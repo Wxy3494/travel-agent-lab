@@ -229,7 +229,7 @@ class AdmissionService:
             check.note += " 有你自行核对的资料参与，未代为验证预约凭证。"
         return check
 
-    async def arrange(self, c, selection, facts, provider, cache=None, budget=None):
+    async def arrange(self, c, selection, facts, provider, cache=None, budget=None, references=None):
         checks, notes = {} if cache is None else cache, []
         budget = [0] if budget is None else budget
         days = [d.model_copy(deep=True) for d in selection.days]
@@ -241,14 +241,25 @@ class AdmissionService:
                 point = pools.get(day.city, {}).get(pid)
                 if point:
                     checks[key] = await self.lookup(point, c.start_date + timedelta(days=day.day - 1), c, provider, budget)
+                    reference = next((r for r in references or [] if r.kind == "attraction" and r.place_id == pid), None)
+                    if reference:
+                        item = checks[key]
+                        item.reference_text = reference.content
+                        if item.opening_status == "unknown":
+                            item.reference_windows = reference.windows
+                            item.reference_closed = item.on_date.weekday() in reference.closed_weekdays
             return checks.get(key)
+
+        def unavailable(check):
+            return check.opening_status == "closed" or check.reference_closed or (
+                check.availability == "sold_out" and not confirmation(c, check))
 
         must = {b.place_id for b in c.bindings if b.field == "must_visit"}
         used = {pid for d in days for pid in d.place_ids}
         for day in days:
             for pid in list(day.place_ids):
                 check = await lookup(day, pid)
-                if not check or check.opening_status != "closed" and not (check.availability == "sold_out" and not confirmation(c, check)):
+                if not check or not unavailable(check):
                     continue
                 pinned = pid in c.day_place_ids.get(day.day, [])
                 if pid in must and not pinned:
@@ -256,11 +267,12 @@ class AdmissionService:
                         if target.day == day.day or target.city != day.city or len(target.place_ids) >= 3:
                             continue
                         candidate = await lookup(target, pid)
-                        if candidate and candidate.opening_status == "open" and candidate.availability != "sold_out":
+                        if candidate and not unavailable(candidate) and (candidate.opening_status == "open" or candidate.reference_windows):
                             day.place_ids.remove(pid)
                             target.place_ids.append(pid)
                             notes.append(Issue(code="admission_rescheduled", severity="warning",
-                                message=f"{check.place_name}原定第{day.day}天不宜到访，已移到第{target.day}天，并重新算路。"))
+                                message=f"{check.place_name}原定第{day.day}天不宜到访，已移到第{target.day}天，并重新算路。"
+                                    + ("调整依据为美团参考资料，官网规则仍待核对。" if check.reference_closed else "")))
                             break
                 elif pid not in must and not pinned:
                     day.place_ids.remove(pid)

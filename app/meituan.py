@@ -14,6 +14,7 @@ from pathlib import Path
 
 from app.admissions import safe_url
 from app.schemas import TravelInfo
+from app.travel_references import parse_references, targets_for
 
 ROOT = Path(__file__).resolve().parents[1]
 CLI_VERSION = "0.0.6"
@@ -22,20 +23,26 @@ CLI_ARCHIVE_SHA256 = "880d743ce904545878f6dfe2032b81613b194ed0b3706b19b320511778
 MAX_QUERY_PLACES = 30
 
 
-def query_for(trip):
-    rows = [{"city": day.city, "place": event.title, "date": str(day.date)}
-            for day in trip.days for event in day.events if event.kind == "visit"]
+def query_for(trip, selection=None, facts=None):
+    targets = targets_for(trip, selection, facts)
+    rows = [{"city": t["city"], "place": t["name"], "dates": [str(d) for d in t["dates"]]}
+            for t in targets if t["kind"] == "attraction"]
     scheduled = {r["place"] for r in rows}
     rows += [{"place": name, "date": "尚未安排具体日期"} for name in trip.constraints.must_visit if name not in scheduled]
-    rows = [dict(t) for t in dict.fromkeys(tuple(r.items()) for r in rows)]
+    rows = list({json.dumps(r, sort_keys=True, ensure_ascii=False): r for r in rows}.values())
     selected = rows[:MAX_QUERY_PLACES]
     c = trip.constraints
     context = {"cities": c.cities, "start_date": str(c.start_date), "days": c.days, "people": c.people,
-               "places": selected}
+               "places": selected, "hotels": [{"name": t["name"], "city": t["city"], "checkin": str(min(t["dates"])),
+                   "checkout": str(max(t["dates"]) + timedelta(days=1)), "rooms": c.rooms or (c.people + 1) // 2}
+                   for t in targets if t["kind"] == "hotel"][:9]}
     query = ("只读查询景点入场资料，不创建、修改、支付或取消订单，不请求身份证等个人资料。"
         "请按以下城市、具体场馆及到访日期，查询开放时间、闭馆安排、最晚入场、预约要求、成人基础票价、"
         "指定日期是否可售，以及来源或预约链接。只返回查询到的信息；未明确查询到的内容写待核实。"
         "基础票、起价、套票、讲解和优惠价请区分，价格中的X或XX原样保留。"
+        "同时按入住退房日期查询所列酒店的房型、每间每晚房价、税费、取消政策和酒店详情链接；"
+        "查不到的酒店写未取得报价，禁止使用其他分店数据或预算估算冒充报价。"
+        "每个景点或酒店单独使用三级标题，标题必须为提供的完整名称，不要改名、合并分馆或缩写。"
         "不要把有商品或可查询理解为已预约；不要推断临时闭馆或免费博物馆余量。行程信息："
         + json.dumps(context, ensure_ascii=False, separators=(",", ":")))
     fingerprint = hashlib.sha256(query.encode()).hexdigest()
@@ -85,13 +92,14 @@ class MeituanTravelService:
             await asyncio.to_thread(process.wait, timeout=5)
             raise
 
-    async def lookup(self, trip, timeout=None):
-        query, fingerprint, count, total = query_for(trip)
+    async def lookup(self, trip, timeout=None, selection=None, facts=None):
+        query, fingerprint, count, total = query_for(trip, selection, facts)
         report = TravelInfo(status="unavailable", query_fingerprint=fingerprint, queried_places=count, total_places=total)
+        report.queried_hotels = min(9, sum(t["kind"] == "hotel" for t in targets_for(trip, selection, facts)))
         if not self.settings.meituan_token:
             report.message = "美团旅行凭证尚未配置。"
             return report
-        if not count:
+        if not count and not report.queried_hotels:
             report.message = "还没有可查询的景点，请先生成行程或填写必去景点。"
             return report
         try:
@@ -109,6 +117,7 @@ class MeituanTravelService:
             if not report.content:
                 raise ValueError("Empty content")
             report.status = "success"
+            report.references = parse_references(report.content, targets_for(trip, selection, facts))
             report.message = "美团返回的参考资料；具体票种、当日余量和临时闭馆请以原始页面为准，不代表已预约。"
         except FileNotFoundError:
             report.message = "美团查询组件未就绪，请运行项目的美团组件安装脚本。"
@@ -118,10 +127,10 @@ class MeituanTravelService:
             report.message = "美团资料查询失败或返回内容不完整，原有行程已保留。"
         return report
 
-    async def enrich(self, trip, previous=None, timeout=None):
+    async def enrich(self, trip, previous=None, timeout=None, selection=None, facts=None):
         if not self.settings.meituan_enabled or self.settings.mode != "live":
             return
-        _, fingerprint, _, _ = query_for(trip)
+        _, fingerprint, _, _ = query_for(trip, selection, facts)
         saved = previous.travel_info if previous else None
         if (saved and saved.status == "success" and saved.query_fingerprint == fingerprint
                 and datetime.now(UTC) - timedelta(minutes=10) <= saved.queried_at <= datetime.now(UTC)):
@@ -131,7 +140,7 @@ class MeituanTravelService:
         if timeout is not None and timeout < 3:
             trip.travel_info = TravelInfo(status="unavailable", message="本次规划已接近等待上限，未追加美团查询；原有行程已保留。")
             return
-        trip.travel_info = await self.lookup(trip, timeout)
+        trip.travel_info = await self.lookup(trip, timeout, selection, facts)
         trip.trace.append({"step": "meituan_reference", "cached": False, "status": trip.travel_info.status,
                            "places": trip.travel_info.queried_places,
-                           "tool_calls": int(bool(self.settings.meituan_token and trip.travel_info.queried_places))})
+                           "tool_calls": int(bool(self.settings.meituan_token and (trip.travel_info.queried_places or trip.travel_info.queried_hotels)))})

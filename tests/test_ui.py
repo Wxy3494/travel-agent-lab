@@ -186,8 +186,7 @@ def test_history_reads_restore_form_and_price_assumptions(ui, service):
     assert lodging["total"] == {"low": 305.5, "high": 305.5}
     next(b for b in ui.button if b.label == "＋ 开始新的旅行").click().run()
     assert ui.session_state.trip is None
-    next(t for t in ui.text_input if t.label == "行程编号").set_value(trip["id"])
-    next(b for b in ui.button if b.label == "读取行程").click().run()
+    ui.button(key="recent_" + trip["id"]).click().run()
     assert not ui.exception
     assert ui.number_input(key="form_hotel_budget").value == 305.5
     assert ui.number_input(key="form_food_budget").value == 90.75
@@ -229,12 +228,38 @@ def test_history_picker_restores_without_uuid_and_clone_preserves_original(ui, s
     next(b for b in ui.button if b.label == "＋ 开始新的旅行").click().run()
     assert ui.session_state.trip is None
     entries = service.repository.list()
+    ui.button(key="all_history").click().run()
     next(s for s in ui.selectbox if s.label == "选择旅行").set_value(entries[0]).run()
     next(b for b in ui.button if b.label == "打开选中旅行").click().run()
     assert not ui.exception and ui.session_state.trip["id"] == old["id"]
     next(b for b in ui.button if b.label == "从当前版本复制为新旅行").click().run()
     assert not ui.exception
     assert ui.session_state.trip["id"] != old["id"] and service.repository.get(old["id"]).version == 1
+
+
+async def test_recent_five_all_history_search_and_older_page_without_debug_controls(ui, service):
+    from app.schemas import Constraints, TripRequest
+    original = await service.create(TripRequest(constraints=Constraints(origin="广州", cities=["广州"],
+        start_date=datetime.now(ZoneInfo("Asia/Shanghai")).date() + timedelta(days=1), days=2, people=2, budget=6000)))
+    for n in range(24):
+        row = original.model_copy(deep=True)
+        row.id = f"older-test-{n}"
+        row.constraints.start_date += timedelta(days=n + 1)
+        service.repository.save(row)
+    ui.run()
+    assert len([b for b in ui.button if b.key and b.key.startswith("recent_")]) == 5
+    assert not ui.json and not any(s.label == "规划策略" for s in ui.selectbox)
+    assert not any(t.label == "行程编号" for t in ui.text_input)
+    ui.button(key="all_history").click().run()
+    assert len(ui.selectbox(key="history_choice").options) == 20
+    next(b for b in ui.button if b.label == "下一页").click().run()
+    assert len(ui.selectbox(key="history_choice").options) == 5
+    assert ui.session_state.history_page == 1
+    ui.text_input(key="history_query").set_value(str(original.constraints.start_date)).run()
+    assert ui.session_state.history_page == 0 and len(ui.selectbox(key="history_choice").options) == 1
+    ui.selectbox(key="history_choice").set_value(service.repository.list(query=str(original.constraints.start_date))[0]).run()
+    next(b for b in ui.button if b.label == "打开选中旅行").click().run()
+    assert not ui.exception and ui.session_state.trip["id"] == original.id and not ui.session_state.history_open
 
 
 def test_advanced_time_form_and_adjustment_apply_work(ui):

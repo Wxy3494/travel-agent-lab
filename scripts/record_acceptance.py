@@ -57,6 +57,8 @@ def record(evidence_dir):
         for name, expected in browser.get("screenshots", {}).items():
             if Path(name).name != name or digest(evidence_dir / name) != expected:
                 raise ValueError("Browser screenshot digest mismatch")
+    supplier_path = evidence_dir / "supplier-replay-check.json"
+    supplier = json.loads(supplier_path.read_text(encoding="utf-8")) if supplier_path.is_file() else None
     snapshot = {"checked_at": datetime.now(ZoneInfo("Asia/Shanghai")).isoformat(),
         "pytest": {**counts, "report_sha256": digest(evidence_dir / "pytest.xml")},
         "ruff": "passed", "pip_check": "passed", "offline": evaluations,
@@ -73,6 +75,7 @@ def record(evidence_dir):
         "browser_ui": {"passed": True, "browser": browser["browser"], "checks": browser["checks"],
             "scope": browser["scope"], "checked_at": browser["checked_at"],
             "report_sha256": digest(browser_path)} if browser else None,
+        "current_supplier_probe": {**supplier, "report_sha256": digest(supplier_path)} if supplier else None,
         "delivery": {"type": "source_only_using_existing_dependencies", "fresh_machine_install": "not_run",
                      "license": "not_selected", "published": False},
         "docker_runtime": "not_run", "cloud_ci": "not_run", "independent_learning": "not_evaluated",
@@ -92,14 +95,15 @@ def record(evidence_dir):
 | 浏览器交互 | {'本机 Chrome 实测' + str(len(browser['checks'])) + '项通过，保存错误和有效表单截图' if browser else '本轮未执行'} | {'独立演示API与数据库，不调用真实模型、地图或票务接口' if browser else 'AppTest不替代浏览器验收'} |
 | 真实接口历史 | 2026-10-15 广州两日生成、预算修改、历史及导出；2026-10-16 武汉酒店地址定位有通过记录 | 当前源码有后续修改，本轮未重新发送模型或地图请求 |
 | 美团真实查询 | {'FastAPI 查询、保存、读取和导出通过' if meituan and meituan['passed'] else '本轮未重测；此前有通过记录' if earlier_meituan and earlier_meituan['passed'] else '本轮未通过'} | 地图/规划角色为隔离夹具；仅美团 CLI 真实请求，不代表真实路线或票务库存验收 |
+| 当前供应商试查 | {str(supplier['queries']) + '次只读查询取得回复，景点参考匹配通过' if supplier else '本轮无新增试查'} | {'酒店分店名称和金额有差异，可靠房价未通过；路线上下文为夹具，没有真实模型/地图全链路验收' if supplier else '见历史记录'} |
 | 官网入场资料 | {str(official['verified']) + '/' + str(official['total']) + ' 个适配场馆实际取得规则' if official else '本轮未查询'} | {official_notes}。常规规则不代表临时公告、实时余量或预约成功 |
 | 真实全覆盖 | 未通过完整验收 | 其他路线、实时房价/房态/余票、七天天气厂商、30天真实规划仍未验收 |
 | Docker、云端 CI | 本轮未运行 | 配置不等于运行证据 |
 | Git 与外发 | 本地基线和修复提交；ZIP 清单记录最终提交与各文件 SHA256 | 无外部推送；未选开源许可证；不能伪称已有远端历史或云端 CI 成绩 |
 
-本轮调整：表单错误直接显示在对应输入框下方，标红输入框，修正后清除；提交时展开含错误的可选项，保留其他输入。明确人数含本人，修复缩短行程后不可见旧日序误拦截的问题。详见 [表单校验](FORM_VALIDATION.md)。此前往返交通、美团接入、景点核验和六项修复继续纳入完整回归。
+本轮调整：侧栏最近5条与完整历史搜索分页，移除策略、编号和调试JSON；历史摘要在原数据库中迁移保存，超过500条也能查询。美团景点与酒店参考整合到每日安排，无冲突的开放时段与常规闭馆提示参与排程，但不冒充官方核验、可靠实时房价或已预约。详见 [历史与资料整合](PRODUCT_HISTORY_REFERENCES.md)。表单、往返交通及景点核验继续纳入完整回归。酒店只读探针取得回复，但含金额和分店名称差异，未作为可靠报价验收。
 
-{'浏览器检查使用独立 Chrome；Computer Use 辅助程序不可用不影响这次实际浏览器测试。报告记录浏览器版本、六项交互结果与截图SHA256。' if browser else '本轮没有浏览器截图验收。'}
+{'浏览器检查使用独立 Chrome。报告记录浏览器版本、交互结果与截图SHA256；历史和参考数据均为隔离演示夹具。' if browser else '本轮没有浏览器截图验收。'}
 
 证据目录：`{evidence_dir.relative_to(ROOT).as_posix() if evidence_dir.is_absolute() else evidence_dir.as_posix()}`。源码和配置哈希保存在机器摘要中；文档与摘要自身不纳入该集合以避免自引用，发布包清单另外覆盖它们。
 

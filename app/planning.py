@@ -333,7 +333,7 @@ async def materialize(c, selection, facts, provider, previous=None, reuse_days=N
             entry = admission_map.get((pid, today))
             if entry:
                 issues.extend(admission_issues(entry, c))
-                if entry.opening_status == "closed" or entry.availability == "sold_out" and not confirmation(c, entry):
+                if entry.opening_status == "closed" or entry.reference_closed or entry.availability == "sold_out" and not confirmation(c, entry):
                     continue
             if not await travel(place.location, chosen.city, f"前往 {place.name}"):
                 continue
@@ -348,10 +348,10 @@ async def materialize(c, selection, facts, provider, previous=None, reuse_days=N
                 visit_duration = rule.visit_minutes or c.visit_minutes
             opening = next((r for r in c.opening_rules if r.place_id == pid and r.on_date == today), None)
             opening_ev = None
-            if entry and entry.opening_status == "open":
+            if entry and (entry.opening_status == "open" or entry.opening_status == "unknown" and entry.reference_windows):
                 booking = confirmation(c, entry)
                 valid_starts = []
-                for window in entry.windows:
+                for window in entry.windows if entry.opening_status == "open" else entry.reference_windows:
                     candidate = max(cursor, minutes(window.start), minutes(booking.entry_window.start) if booking else 0)
                     if (candidate + visit_duration <= min(end_limit, minutes(window.end))
                             and (entry.last_entry is None or candidate < minutes(entry.last_entry))

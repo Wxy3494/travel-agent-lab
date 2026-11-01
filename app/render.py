@@ -8,6 +8,7 @@ from app.presentation import (
     plain_text,
     weather_line,
 )
+from app.travel_references import matching_reference, references_for
 
 
 def escape(value):
@@ -15,6 +16,7 @@ def escape(value):
 
 
 def render_markdown(trip):
+    refs = references_for(trip)
     labels = {"ready": "规划完成（估算方案）", "needs_input": "需要补充信息", "needs_review": "存在待处理约束",
               "blocked": "请求未执行", "failed": "本次规划失败"}
     lines = [f"# 旅行计划 · 第{trip.version}版", "", f"状态：{labels[trip.status]}", "",
@@ -66,12 +68,21 @@ def render_markdown(trip):
             lines += [f"路线耗时比较：{day.route_comparison['before_minutes']} → {day.route_comparison['after_minutes']}分钟；简单邻近候选比较，非全局最优。"]
         for event in day.events:
             lines += [f"- {escape(event.title)}：{escape(plain_text(segment))}" for segment in event.route_segments]
+            ref = matching_reference(refs, event.place_id) if event.kind == "visit" else None
+            if ref:
+                lines += ["", f"### {escape(event.title)} · 入场参考", "",
+                          "美团参考资料，不代表已预约；官方当日公告优先。查询时间：" + trip.travel_info.queried_at.isoformat(), ref.content]
+                if day.date not in ref.dates:
+                    lines += ["原查询到访日期：" + "、".join(str(d) for d in ref.dates) + "；调整到访日期后需重新确认当日规则。"]
         if day.overnight_city:
             lines += [f"住宿城市：{escape(day.overnight_city)}；位置候选仅供查询，房价与可售状态未验证。"]
             for p in day.hotel_options:
-                hotel = hotel_details(p, c, day.date)
+                ref = matching_reference(refs, p.id, day.date)
+                hotel = hotel_details(p, c, day.date, ref, bool(trip.travel_info and trip.travel_info.queried_hotels))
                 lines += [f"- **{escape(hotel['name'])}**：[查看地图]({hotel['map_url']}) · [搜索房价]({hotel['search_url']})",
                           f"  {hotel['budget_label']}；{hotel['price_note']}"]
+                if ref:
+                    lines += ["", "美团房型与价格参考（未作为已核实房价计入预算）：", ref.content]
         lines.append("")
     if trip.budget:
         b = trip.budget
@@ -80,9 +91,9 @@ def render_markdown(trip):
         for item in b.items:
             lines.append(f"| {escape(item.category)} | {item.quantity} {item.unit} | ¥{item.unit_price.low:.2f}–{item.unit_price.high:.2f} | ¥{item.total.low:.2f}–{item.total.high:.2f} |")
         lines += ["", f"**总计：¥{b.total.low:.2f}–{b.total.high:.2f}**", "", escape(c.pricing_note), ""]
-    if trip.travel_info:
+    if trip.travel_info and not refs:
         info = trip.travel_info
-        lines += ["## 美团景点与门票参考", "", escape(info.message), "", "查询时间：" + info.queried_at.isoformat(), ""]
+        lines += ["## 补充旅行资料（尚未匹配到具体地点）", "", escape(info.message), "", "查询时间：" + info.queried_at.isoformat(), ""]
         if info.queried_places < info.total_places:
             lines += [f"本次查询覆盖前{info.queried_places}个地点，共{info.total_places}个。", ""]
         if info.content:

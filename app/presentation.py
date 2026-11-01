@@ -78,7 +78,7 @@ def day_description(day, ready=True):
     return f"今天在{value['city']}自由活动，暂未安排新的景点。你可以休息、逛街，或补充想去的地方。"
 
 
-def hotel_details(hotel, constraints, on_date):
+def hotel_details(hotel, constraints, on_date, reference=None, queried=False):
     value = hotel if isinstance(hotel, dict) else hotel.model_dump(mode="json")
     c = constraints if isinstance(constraints, dict) else constraints.model_dump(mode="json")
     price = c["hotel_per_room_night"]
@@ -90,7 +90,9 @@ def hotel_details(hotel, constraints, on_date):
                     "name": value["name"], "src": "travel-agent-lab"}),
         "search_url": "https://www.bing.com/search?" + urlencode({"q": query}),
         "budget_label": f"住宿预算参考：约 ¥{amount:,.0f} / 间 / 晚（按你的住宿预算估算）",
-        "price_note": "实时房价尚未接入；这不是该酒店的报价，房型、房价和可订情况请另行确认。",
+        "price_note": ("已取得美团房型与房价参考；最终房价、税费及可订情况以酒店详情页为准。" if reference else
+                       "已查询房价，但尚未取得可准确对应这家分店及入住日期的报价；不套用其他分店价格。" if queried else
+                       "本次未取得这家酒店的指定日期报价；上方是预算参考，不是该酒店的报价。"),
     }
 def weather_line(value):
     data = value if isinstance(value, dict) else value.model_dump()
@@ -121,6 +123,8 @@ def admission_summary(value, constraints):
     opening = {"unknown": "开放时间待核实", "closed": "该日闭馆或常规不开放", "open": "常规开放时段已核对"}[item["opening_status"]]
     if item["opening_status"] == "open":
         opening += "：" + "、".join(w["start"][:5] + "–" + w["end"][:5] for w in item["windows"])
+    if item["opening_status"] == "unknown" and item.get("reference_text"):
+        opening += "（已取得美团参考，尚缺可直接核对的官方规则）"
     if item.get("last_entry"):
         opening += "；" + item["last_entry"][:5] + "停止入场"
     confirmed = any(r["place_id"] == item["place_id"] and r["on_date"] == item["on_date"]

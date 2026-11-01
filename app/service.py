@@ -209,8 +209,15 @@ class TravelService:
                         for attempt in range(self.settings.max_repairs + 1):
                             selection = await agents.select(c, facts, feedback)
                             selection = apply_day_choices(selection, c, previous, reuse_days, afternoon_day)
+                            if attempt == 0:
+                                remaining = self.settings.timeout - (time.perf_counter() - start) - 10
+                                if self.settings.meituan_enabled and self.settings.mode == "live" and provider.calls >= self.settings.max_tool_calls:
+                                    result.travel_info = TravelInfo(status="unavailable", message="本次资料查询额度已用完，未追加美团查询。")
+                                else:
+                                    await self.meituan_service.enrich(result, previous, min(self.settings.meituan_timeout, remaining), selection, facts)
                             selection, result.visit_checks, admission_notes = await self.admission_service.arrange(
-                                c, selection, facts, provider, visit_cache, visit_budget)
+                                c, selection, facts, provider, visit_cache, visit_budget,
+                                result.travel_info.references if result.travel_info else [])
                             if reuse_days and any(check.enforced for check in result.visit_checks):
                                 reuse_days, afternoon_day = set(), None
                                 result.revision_scope = {"expanded": True, "preserved_days": [],
@@ -252,11 +259,6 @@ class TravelService:
                                 break
                             last_errors = fingerprint
                         result.adjustments = suggestions(result)
-                        remaining = self.settings.timeout - (time.perf_counter() - start) - 5
-                        if self.settings.meituan_enabled and self.settings.mode == "live" and provider.calls >= self.settings.max_tool_calls:
-                            result.travel_info = TravelInfo(status="unavailable", message="本次工具查询额度已用完，未追加美团查询；原有行程已保留。")
-                        else:
-                            await self.meituan_service.enrich(result, previous, min(self.settings.meituan_timeout, remaining))
         except TimeoutError:
             result.status = "failed"
             result.issues = [Issue(code="request_timeout", message="规划超时，已停止；请减少城市或地点后重试")]

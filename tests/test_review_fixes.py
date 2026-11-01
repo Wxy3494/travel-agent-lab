@@ -156,13 +156,13 @@ def test_frontend_uses_server_timeout_even_with_different_local_environment(monk
     calls = []
     def local(method, url, **kwargs):
         calls.append((url, kwargs["timeout"]))
-        body = {"mode": "demo", "status": "ok", "request_timeout_seconds": 600} if url.endswith("/health") else []
+        body = {"mode": "demo", "status": "ok", "request_timeout_seconds": 600} if url.endswith("/health") else {"items": [], "total": 0}
         return httpx.Response(200, json=body)
     monkeypatch.setenv("TRAVEL_TIMEOUT_SECONDS", "200")
     monkeypatch.setattr(httpx, "request", local)
     ui = AppTest.from_file(str(ROOT / "app/ui.py"), default_timeout=10).run()
     assert not ui.exception
-    assert any(url.endswith("/trips?query=") and timeout.read == 630 for url, timeout in calls)
+    assert any(url.endswith("/trips/history?limit=5") and timeout.read == 630 for url, timeout in calls)
     assert all(timeout.connect == 10 for _, timeout in calls)
 
 

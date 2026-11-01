@@ -44,7 +44,7 @@ async def test_automatic_query_saved_exported_cached_and_date_change_refetches(t
     result = await sample(service, constraints)
     assert result.status == "ready" and result.travel_info.status == "success" and len(calls) == 1
     assert "¥XX起" in result.travel_info.content and "</answer>" not in result.travel_info.content
-    assert "美团景点与门票参考" in render_markdown(result)
+    assert "补充旅行资料" in render_markdown(result)
     assert service.repository.get(result.id).travel_info.content == result.travel_info.content
     # A text consultation is not fabricated into the strict, date-bound entry checks.
     assert all(v.ticket_price is None and v.authority == "fixture" for v in result.visit_checks)
@@ -173,6 +173,6 @@ async def test_ui_and_export_show_reference_without_claiming_booked(service, con
     ui.session_state.trip = result.model_dump(mode="json")
     ui.run()
     assert not ui.exception
-    assert any(e.label == "美团景点与门票参考" for e in ui.expander)
+    assert not any(e.label == "美团景点与门票参考" for e in ui.expander)
     assert any("¥XX起" in m.value for m in ui.markdown)
     assert any("不代表已预约" in c.value for c in ui.caption)

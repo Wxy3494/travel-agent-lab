@@ -38,8 +38,15 @@ def create_app(settings=None, service=None):
         return await service.create(request)
 
     @api.get("/trips")
-    def list_trips(query: str = Query(default="", max_length=100), limit: int = Query(default=50, ge=1, le=100)):
-        return service.repository.list(query, limit)
+    def list_trips(query: str = Query(default="", max_length=100), limit: int = Query(default=50, ge=1, le=100),
+                   offset: int = Query(default=0, ge=0)):
+        return service.repository.list(query, limit, offset)
+
+    @api.get("/trips/history")
+    def trip_history(query: str = Query(default="", max_length=100), limit: int = Query(default=20, ge=1, le=100),
+                     offset: int = Query(default=0, ge=0)):
+        return {"items": service.repository.list(query, limit, offset), "total": service.repository.count(query),
+                "offset": offset, "limit": limit}
 
     @api.get("/weather", response_model=WeatherReport)
     async def weather(city: str = Query(min_length=1, max_length=60), on_date: date | None = None):

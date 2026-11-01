@@ -111,6 +111,9 @@ class VisitCheck(Model):
     evidence_id: str = ""
     note: str = Field(default="", max_length=800)
     enforced: bool = True
+    reference_text: str = Field(default="", max_length=4000)
+    reference_windows: list[EntryWindow] = Field(default_factory=list, max_length=8)
+    reference_closed: bool = False
 
     @model_validator(mode="after")
     def complete(self):
@@ -436,6 +439,18 @@ class CloneRequest(Model):
     version: int | None = Field(default=None, ge=1)
 
 
+class TravelReference(Model):
+    place_id: str
+    name: str
+    city: str
+    kind: Literal["attraction", "hotel"]
+    dates: list[date] = Field(default_factory=list, max_length=30)
+    content: str = Field(max_length=4000)
+    source_urls: list[str] = Field(default_factory=list, max_length=8)
+    windows: list[EntryWindow] = Field(default_factory=list, max_length=8)
+    closed_weekdays: list[int] = Field(default_factory=list, max_length=7)
+
+
 class TravelInfo(Model):
     status: Literal["success", "unavailable"]
     content: str = Field(default="", max_length=40000)
@@ -445,6 +460,8 @@ class TravelInfo(Model):
     query_fingerprint: str = ""
     queried_places: int = 0
     total_places: int = 0
+    queried_hotels: int = 0
+    references: list[TravelReference] = Field(default_factory=list, max_length=40)
 
 
 class TripResult(Model):

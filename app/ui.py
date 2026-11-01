@@ -1,6 +1,5 @@
 """Form-first travel planning with optional text revisions."""
 import base64
-import json
 import os
 from collections import Counter
 from datetime import date, datetime, time
@@ -25,11 +24,12 @@ from app.presentation import (
 from app.render import escape, render_markdown
 from app.schemas import MAX_TRIP_DAYS, TripResult
 from app.service import blocked_input
+from app.travel_references import matching_reference, reference_body, references_for
 
 load_dotenv()
 API = os.getenv("TRAVEL_API_URL", "http://127.0.0.1:8000").rstrip("/")
 st.set_page_config(page_title="行旅 · 旅行规划", page_icon="🧭", layout="wide",
-                   initial_sidebar_state="collapsed")
+                   initial_sidebar_state="auto")
 TODAY = datetime.now(ZoneInfo("Asia/Shanghai")).date()
 ASSETS = Path(__file__).with_name("assets")
 HERO_IMAGE = "data:image/jpeg;base64," + base64.b64encode(
@@ -134,12 +134,18 @@ def revise_choice(trip, changes=None, **options):
 def show_trip(trip, latest):
     labels = {"ready": "方案已生成", "needs_review": "行程还需要调整", "needs_input": "还需要补充一些信息",
               "blocked": "这项请求无法执行", "failed": "这次规划未完成"}
-    st.markdown(f"**{labels[trip['status']]}** · 第{trip['version']}版")
+    refs = references_for(trip)
+    pending_codes = {"admission_unverified", "ticket_unverified", "audit_admission_unverified", "audit_ticket_unverified"}
+    only_pending = trip["status"] == "needs_review" and all(i["code"] in pending_codes for i in trip["issues"] if i["severity"] == "error")
+    label = "行程已安排，部分入场信息待确认" if only_pending else labels[trip["status"]]
+    st.markdown(f"**{label}** · 第{trip['version']}版")
     for q in trip["questions"]:
         st.write(plain_text(q))
     if trip["status"] == "needs_input":
         st.caption("请在上方补充缺少的信息，再生成行程；也可以用下方文字输入框补充。")
-    errors = [issue for issue in trip["issues"] if issue["severity"] == "error"]
+    errors = [issue for issue in trip["issues"] if issue["severity"] == "error" and issue["code"] not in pending_codes]
+    if any(i["severity"] == "error" and i["code"] in pending_codes for i in trip["issues"]):
+        st.info("部分景点的开放、预约或票价还缺少可直接核对的资料。已把查询参考和待确认事项放在对应景点下方；请在出发前确认。")
     for issue in errors[:8]:
         st.warning(issue_message(issue))
     if len(errors) > 8:
@@ -197,6 +203,14 @@ def show_trip(trip, latest):
                     check = next((v for v in trip.get("visit_checks", []) if v["place_id"] == e.get("place_id") and v["on_date"] == day["date"]), None)
                     if check:
                         st.caption("入场核验：" + admission_summary(check, c))
+                    ref = matching_reference(refs, e.get("place_id")) if e["kind"] == "visit" else None
+                    if ref:
+                        st.caption("美团入场参考 · " + trip["travel_info"]["queried_at"] + " · 平台说法尚未独立核验，不代表已预约；以官方当日公告为准")
+                        if day["date"] not in {str(d) for d in ref.dates}:
+                            st.caption("这份资料原按" + "、".join(str(d) for d in ref.dates) + "查询；到访日期调整后，当日开放和预约仍需重新确认。")
+                        st.markdown(plain_text(reference_body(ref)))
+                        for url in ref.source_urls:
+                            st.markdown(f"[查看参考来源]({url})")
                     for segment in e.get("route_segments", []):
                         st.caption(plain_text(segment))
                 if not day.get("weather_details"):
@@ -205,12 +219,23 @@ def show_trip(trip, latest):
                 if day["overnight_city"]:
                     st.write(f"当晚住在{day['overnight_city']}；填写的住处用于计算路程，未填写时按住宿区域估算。以下酒店仅供参考，房价和房源需另行确认。")
                     for h in day["hotel_options"]:
-                        hotel = hotel_details(h, c, day["date"])
+                        ref = matching_reference(refs, h["id"], day["date"])
+                        hotel = hotel_details(h, c, day["date"], ref, bool(trip.get("travel_info", {}) and trip["travel_info"].get("queried_hotels")))
                         st.markdown(f"**{escape(hotel['name'])}** · [查看地图]({hotel['map_url']}) · [搜索房价]({hotel['search_url']})")
                         st.caption(hotel["budget_label"])
                         st.caption(hotel["price_note"])
+                        if ref:
+                            st.caption("美团报价参考 · 查询时间：" + trip["travel_info"]["queried_at"]
+                                + "；入住日期：" + str(min(ref.dates)) + "起。以下价格来自平台回复，未作为已核实房价计入预算。")
+                            st.markdown(plain_text(reference_body(ref)))
     if latest and trip["days"]:
         with st.expander("预算明细、风险与来源"):
+            info = trip.get("travel_info")
+            if info and not refs and info.get("content"):
+                st.caption("补充旅行资料：本次回复未能按具体地点匹配，尚未用于排程。")
+                st.markdown(info["content"])
+            elif info and info["status"] != "success":
+                st.caption(info["message"])
             if trip["budget"]:
                 st.dataframe([{"项目": i["category"], "数量": f"{i['quantity']} {i['unit']}",
                     "下限 / 元": i["total"]["low"], "上限 / 元": i["total"]["high"]}
@@ -235,6 +260,8 @@ st.session_state.setdefault("revision_notes", [])
 st.session_state.setdefault("form_validation_started", False)
 st.session_state.setdefault("form_errors", {})
 st.session_state.setdefault("form_expand_details", False)
+st.session_state.setdefault("history_open", False)
+st.session_state.setdefault("history_page", 0)
 form_initialized = "form_origin" in st.session_state
 for key, value in FORM_DEFAULTS.items():
     st.session_state.setdefault(key, value)
@@ -244,6 +271,48 @@ if "sync_form" in st.session_state:
     sync_form(st.session_state.pop("sync_form"))
     st.session_state.revision_instruction = ""
 
+def close_history():
+    st.session_state.history_open = False
+
+
+def reset_history_page():
+    st.session_state.history_page = 0
+
+
+def open_history_trip(trip_id):
+    loaded = request("GET", f"/trips/{quote(trip_id, safe='')}")
+    if loaded:
+        st.session_state.trip = loaded
+        st.session_state.sync_form = loaded["constraints"]
+        st.session_state.revision_notes = []
+        close_history()
+        st.rerun()
+
+
+@st.dialog("全部历史旅行", width="large", on_dismiss=close_history)
+def history_dialog():
+    query = st.text_input("按城市或日期查找", key="history_query", max_chars=100, on_change=reset_history_page)
+    offset = st.session_state.history_page * 20
+    data = request("GET", f"/trips/history?query={quote(query, safe='')}&limit=20&offset={offset}") or {}
+    rows, total = data.get("items", []), data.get("total", 0)
+    st.caption(f"共{total}条旅行记录 · 第{st.session_state.history_page + 1}页")
+    picked = st.selectbox("选择旅行", rows, index=None, key="history_choice",
+                          format_func=lambda r: f"{r['title']} · 第{r['version']}版", placeholder="请选择历史旅行")
+    if st.button("打开选中旅行", disabled=picked is None):
+        open_history_trip(picked["id"])
+    a, b, c = st.columns(3)
+    if a.button("上一页", disabled=offset == 0):
+        st.session_state.history_page -= 1
+        st.rerun()
+    if b.button("下一页", disabled=offset + 20 >= total):
+        st.session_state.history_page += 1
+        st.rerun()
+    if c.button("关闭历史列表"):
+        close_history()
+        st.rerun()
+
+
+strategy = "multi"
 with st.sidebar:
     st.markdown("### 🧭 行旅")
     if st.button("＋ 开始新的旅行", width="stretch"):
@@ -261,37 +330,19 @@ with st.sidebar:
         st.caption("真实接口 · 价格为估算" if health["mode"] == "live" else "离线演示 · 人工示例数据")
         if health["mode"] == "demo":
             st.caption("支持广州、深圳、珠海的基础需求；没有调用模型或真实地图。")
-    with st.expander("历史旅行列表"):
-        history_query = st.text_input("按城市或日期查找", key="history_query")
-        entries = request("GET", "/trips?query=" + quote(history_query, safe="")) or []
-        picked = st.selectbox("选择旅行", entries, index=None,
-                              format_func=lambda r: f"{r['title']} · 第{r['version']}版 · {r['id'][:8]}")
-        if st.button("打开选中旅行", disabled=picked is None):
-            loaded = request("GET", f"/trips/{picked['id']}")
-            if loaded:
-                st.session_state.trip = loaded
-                st.session_state.sync_form = loaded["constraints"]
-                st.rerun()
-    with st.expander("找回行程与历史版本"):
-        trip_id = st.text_input("行程编号")
-        version = st.number_input("版本（0为最新）", min_value=0, step=1)
-        if st.button("读取行程") and trip_id:
-            suffix = f"?version={version}" if version else ""
-            trip = request("GET", f"/trips/{quote(trip_id, safe='')}{suffix}")
-            if trip:
-                st.session_state.trip = trip
-                st.session_state.sync_form = trip["constraints"]
-                st.session_state.revision_notes = []
-                st.rerun()
-    with st.expander("执行信息与开发设置"):
-        strategy = st.selectbox("规划策略", ["multi", "single"],
-            format_func=lambda s: "三智能体" if s == "multi" else "单智能体基线")
-        trip = st.session_state.trip
-        if trip:
-            st.caption(f"行程编号：{trip['id']}")
-            st.json({"metrics": trip["metrics"], "trace": trip["trace"]})
-            st.download_button("下载结果数据", json.dumps(trip, ensure_ascii=False, indent=2),
-                file_name=f"trip-{trip['id']}-v{trip['version']}.json", mime="application/json")
+    st.markdown("#### 最近的旅行")
+    recent = request("GET", "/trips/history?limit=5") or {}
+    for entry in recent.get("items", []):
+        if st.button(entry["title"], key="recent_" + entry["id"], width="stretch"):
+            open_history_trip(entry["id"])
+    if not recent.get("items"):
+        st.caption("还没有旅行记录，生成后会自动保存在这里。")
+    if st.button(f"查看全部历史（{recent.get('total', 0)}）", key="all_history", width="stretch"):
+        st.session_state.history_open = True
+        st.session_state.history_page = 0
+
+if st.session_state.history_open:
+    history_dialog()
 
 mode_label = "离线演示 · 示例数据" if health and health["mode"] == "demo" else (
     "真实接口 · 费用估算" if health else "规划服务未连接")
@@ -418,15 +469,6 @@ if trip:
     with st.container(border=True):
         show_trip(trip, latest=True)
     if trip.get("visit_checks") or trip.get("days"):
-        info = trip.get("travel_info")
-        if info:
-            with st.expander("美团景点与门票参考", expanded=info["status"] == "success"):
-                st.caption(info["message"])
-                st.caption("查询时间：" + info["queried_at"])
-                if info["queried_places"] < info["total_places"]:
-                    st.caption(f"本次查询覆盖前{info['queried_places']}个地点，共{info['total_places']}个；其他地点仍需核实。")
-                if info["content"]:
-                    st.markdown(info["content"])
         with st.expander("景点入场核验与预约确认"):
             st.caption("常规开放规则不保证当天无临时闭馆；免费景点也可能要预约。这里只记录你确认的日期、人数和时段，不填写身份证或订单号。")
             if not trip.get("visit_checks"):
