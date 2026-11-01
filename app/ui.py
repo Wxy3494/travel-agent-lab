@@ -1,5 +1,6 @@
 """Form-first travel planning with optional text revisions."""
 import base64
+import json
 import os
 import uuid
 from collections import Counter
@@ -184,11 +185,12 @@ def show_assistant(trip):
         if unfinished:
             st.caption("刚才的消息正在处理中，可稍后重试以获取回复。" if unfinished["state"] == "running" else
                        "刚才的消息未完成，点击重新发送即可继续；已经保存的修改不会重复执行。")
+        chat_log = st.container()
         if not messages:
-            with st.chat_message("assistant"):
+            with chat_log, st.chat_message("assistant"):
                 st.write(planning_reply(TripResult.model_validate(trip)))
         for message in messages:
-            with st.chat_message(message["role"]):
+            with chat_log, st.chat_message(message["role"]):
                 st.write(message["content"])
         message = st.chat_input("例如：第二天轻松一点，想多留些时间吃当地美食", key="assistant_input", max_chars=3000)
         if message:
@@ -197,11 +199,36 @@ def show_assistant(trip):
         pending = st.session_state.get("pending_chat")
         retry = bool(pending) and st.button("重新发送刚才的消息", key="retry_chat") if not message else False
         if (message or retry) and pending:
-            with st.chat_message("user"):
+            with chat_log, st.chat_message("user"):
                 st.write(pending["message"])
-            with st.chat_message("assistant"), st.spinner("我正在查看并安排…"):
-                response = request("POST", f"/trips/{pending['trip_id']}/chat",
-                    {k: v for k, v in pending.items() if k != "trip_id"})
+            with chat_log, st.chat_message("assistant"):
+                feedback = st.empty()
+                feedback.write("收到，我先看一下你的想法，再帮你安排。")
+                stages = st.empty()
+                response = None
+                try:
+                    with httpx.stream("POST", API + f"/trips/{pending['trip_id']}/chat/stream",
+                            json={k: v for k, v in pending.items() if k != "trip_id"}, timeout=client_read_timeout()) as stream:
+                        stream.raise_for_status()
+                        for line in stream.iter_lines():
+                            if not line.strip():
+                                continue
+                            event = json.loads(line)
+                            if event["type"] == "progress":
+                                if event["stage"] == "checking":
+                                    stages.caption(event["message"])
+                                else:
+                                    feedback.write(event["message"])
+                            elif event["type"] == "result":
+                                response = event["data"]
+                            elif event["type"] == "error":
+                                feedback.write(event["message"])
+                            elif event["type"] == "heartbeat":
+                                stages.caption(f"仍在处理中（已等待 {event['elapsed_seconds']} 秒），完成后会自动更新行程。")
+                    if response is None:
+                        stages.caption("处理尚未完成，可重新发送刚才的消息继续。")
+                except (httpx.HTTPError, ValueError, KeyError):
+                    stages.caption("连接暂时中断，可重新发送刚才的消息；已保存的修改不会重复执行。")
             if response:
                 st.session_state.trip = response["trip"]
                 if response.get("changed"):

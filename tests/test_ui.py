@@ -25,6 +25,9 @@ def ui(monkeypatch, service):
 
     monkeypatch.setenv("TRAVEL_API_URL", "http://127.0.0.1:8000")
     monkeypatch.setattr(httpx, "request", local_request)
+    def local_stream(method, url, json=None, **kwargs):
+        return api.stream(method, urlsplit(url).path, json=json)
+    monkeypatch.setattr(httpx, "stream", local_stream)
     app = AppTest.from_file(str(ROOT / "app/ui.py"), default_timeout=10).run()
     assert not app.exception
     return app

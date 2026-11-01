@@ -1,7 +1,7 @@
 """Deterministic arithmetic and itinerary constraints; model approval cannot override these."""
 from datetime import timedelta
 from decimal import Decimal
-from itertools import pairwise
+from itertools import combinations, pairwise
 from math import ceil
 from urllib.parse import urlencode
 
@@ -326,7 +326,9 @@ async def materialize(c, selection, facts, provider, previous=None, reuse_days=N
                        else location(chosen.city, "hotel_id", local.location))
         if chosen.day == c.days and not c.return_to_origin:
             destination = location(chosen.city, "departure_station_id", destination)
-        if (c.optimize_routes and len(ids) > 1 and not c.opening_rules and previous_city == chosen.city
+        if rule and rule.reduce_walking and ids and previous_city == chosen.city:
+            ids, comparison = await light_day_order(ids, available, position, destination, local, c, provider)
+        elif (c.optimize_routes and len(ids) > 1 and not c.opening_rules and previous_city == chosen.city
                 and not (in_day_return and chosen.city != c.origin)):
             ids, comparison = await optimize_order(ids, available, position, destination, local, c, provider,
                                                    remaining_days=c.days - chosen.day)
@@ -454,6 +456,36 @@ async def materialize(c, selection, facts, provider, previous=None, reuse_days=N
     if any(item.evidence_id not in known for item in items):
         issues.append(Issue(code="source_missing", message="预算引用了未登记来源"))
     return days, Budget(items=items, total=total, status=status), issues
+
+
+async def light_day_order(ids, available, start, end, local, c, provider):
+    """Compare actual map routes for smaller subsets; never drop a mandatory visit."""
+    mandatory = must_ids(c) | {p.id for p in available.values() if p.name in c.must_visit} | {r.place_id for r in c.reservations}
+    required = mandatory & set(ids)
+    slots = max(len(required), min(2, max(1, len(ids) - 1)))
+    options = [list(group) for group in combinations(ids, slots) if required <= set(group)]
+    candidates = [ids, *[group for group in options if group != ids]]
+    # Bound additional map use; retain the original route when no safe comparison is possible.
+    if provider.max_calls - provider.calls < sum(len(group) + 1 for group in candidates) + 10:
+        return ids, {"method": "本次路线查询额度有限，保留已有路线，尚未完成少步行比较"}
+    async def score(group):
+        locations = [start, *[available[pid].location for pid in group], end]
+        duration, walked, known = 0, 0, True
+        for a, b in pairwise(locations):
+            if a == b:
+                continue
+            route = await provider.route(a, b, local.citycode, local.citycode, c.transport)
+            duration += route["minutes"] + 10
+            steps = route.get("steps", [])
+            known &= bool(steps)
+            walked += sum(s.get("distance") or 0 for s in steps if s["kind"] == "walk")
+        return duration, walked if known else None
+    values = [await score(group) for group in candidates]
+    with_walking = all(v[1] is not None for v in values)
+    best = min(range(len(candidates)), key=lambda i: (values[i][1] if with_walking else values[i][0], len(candidates[i]), values[i][0]))
+    return candidates[best], {"method": "比较减少可选活动后的地图路线，优先减少接驳步行；必去地点保留",
+        "before_minutes": values[0][0], "after_minutes": values[best][0],
+        "before_walk_m": values[0][1], "after_walk_m": values[best][1]}
 
 
 async def optimize_order(ids, available, start, end, local, c, provider, remaining_days=0):

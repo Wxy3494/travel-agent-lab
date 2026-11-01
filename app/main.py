@@ -1,8 +1,11 @@
+import asyncio
+import json
+from contextlib import suppress
 from datetime import date
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 from pydantic import ValidationError
 
 from app.assistant import AssistantRequest, TourAssistant
@@ -122,6 +125,41 @@ def create_app(settings=None, service=None):
         if service.repository.get(trip_id) is None:
             raise HTTPException(404, "旅行记录不存在")
         return service.repository.pending_chat(trip_id)
+
+    @api.post("/trips/{trip_id}/chat/stream")
+    async def chat_stream(trip_id: str, request: AssistantRequest):
+        if service.repository.get(trip_id) is None:
+            raise HTTPException(404, "旅行记录不存在")
+
+        async def events():
+            queue = asyncio.Queue()
+            started = asyncio.get_running_loop().time()
+            async def run():
+                try:
+                    result = await api.state.tour_assistant.handle(trip_id, request,
+                        progress=lambda event: queue.put_nowait({"type": "progress", **event}))
+                    queue.put_nowait({"type": "result", "data": result})
+                except VersionConflict as exc:
+                    queue.put_nowait({"type": "error", "message": str(exc)})
+                except Exception:  # noqa: BLE001 - Never stream provider exception text.
+                    queue.put_nowait({"type": "error", "message": "这次处理暂未完成，可重试刚才的消息；已经保存的修改不会重复执行。"})
+            task = asyncio.create_task(run())
+            try:
+                while True:
+                    try:
+                        event = await asyncio.wait_for(queue.get(), timeout=10)
+                    except TimeoutError:
+                        event = {"type": "heartbeat", "elapsed_seconds": round(asyncio.get_running_loop().time() - started)}
+                    yield json.dumps(event, ensure_ascii=False) + "\n"
+                    if event["type"] in {"result", "error"}:
+                        break
+            finally:
+                if not task.done():
+                    task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await task
+        return StreamingResponse(events(), media_type="application/x-ndjson",
+                                 headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
     @api.get("/trips/{trip_id}/compare")
     def difference(trip_id: str, from_version: int = Query(ge=1), to_version: int = Query(ge=1)):

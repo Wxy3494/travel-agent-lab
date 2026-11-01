@@ -78,10 +78,17 @@ def record(evidence_dir):
     diagnostic = json.loads(diagnostic_path.read_text(encoding="utf-8")) if diagnostic_path.is_file() else None
     if diagnostic:
         round_notes = "本轮定位模型服务故障：一次真实最小请求返回HTTP 402及余额不足错误；最近两次规划在首个模型调用被拒绝，高德调用为零。页面后续请求会明确提示模型服务余额不足，错误记录仅保留状态码和异常类别。模型服务恢复仍待账户补充API余额，未冒称真实规划通过。"
+    chat_path = evidence_dir / "chat-response-check.json"
+    chat = json.loads(chat_path.read_text(encoding="utf-8")) if chat_path.is_file() else None
+    if chat:
+        if not chat.get("passed"):
+            raise ValueError("Automatic chat replanning did not pass")
+        round_notes = "本轮修复旅游助手反复拒绝修改：模型使用可执行偏好Schema，兼容轻松节奏和少步行表达；通过流式接口先回应意图，再显示重排进度，保存后返回具体变化。少步行比较地图路线的可选活动子集，保留必去点与已预约地点；指定日期修改保留其他日期，实际入场规则变化才扩大重算。详见 [旅游助手与照片](TOUR_ASSISTANT.md)。"
     snapshot = {"checked_at": datetime.now(ZoneInfo("Asia/Shanghai")).isoformat(),
         "pytest": {**counts, "report_sha256": digest(evidence_dir / "pytest.xml")},
         "ruff": "passed", "pip_check": "passed", "offline": evaluations,
-        "historical_live": history, "current_live_end_to_end": "not_rerun_full_route_model_end_to_end",
+        "historical_live": history, "current_live_end_to_end": ("limited_model_and_amap_chat_replanning; Meituan_disabled; admissions_pending"
+                                                              if chat else "not_rerun_full_route_model_end_to_end"),
         "meituan_live": {"passed": meituan["passed"], "scope": meituan["scope"],
             "checked_at": meituan["checked_at"], "report_sha256": digest(meituan_path)} if meituan else "not_run",
         "historical_meituan_live": {"passed": earlier_meituan["passed"], "scope": earlier_meituan["scope"],
@@ -104,6 +111,7 @@ def record(evidence_dir):
             "report_sha256": digest(photos_path)} if photos else None,
         "fault_regressions": {**regressions, "report_sha256": digest(regression_path)} if regressions else None,
         "model_service_diagnostic": {**diagnostic, "report_sha256": digest(diagnostic_path)} if diagnostic else None,
+        "chat_response_probe": {**chat, "report_sha256": digest(chat_path)} if chat else None,
         "delivery": {"type": "source_only_using_existing_dependencies", "fresh_machine_install": "not_run",
                      "license": "not_selected", "published": False},
         "docker_runtime": "not_run", "cloud_ci": "not_run", "independent_learning": "not_evaluated",
@@ -121,7 +129,7 @@ def record(evidence_dir):
 | 离线场景 | v3 {evaluations['v3']['passed']}/{evaluations['v3']['total']}；v2 {evaluations['v2']['passed']}/{evaluations['v2']['total']} | 模型调用为零；已知回归，非盲测 |
 | 发布包界面 | 独立进程解压后运行 AppTest，CSS 加载、JPG 嵌入通过 | 复用本机依赖，未在全新机器安装 |
 | 浏览器交互 | {'本机 Chrome 实测' + str(len(browser['checks'])) + '项通过，保存界面截图' if browser else '本轮未执行'} | {browser['scope'] if browser else 'AppTest不替代浏览器验收'} |
-| 旅游助手真实意图 | {'咨询与修改两次真实模型意图通过' if assistant else '本轮未执行'} | 修改执行使用演示规划角色和地图；不代表真实路线全链路验收 |
+| 旅游助手真实意图 | {'咨询与修改两次真实模型意图通过' if assistant else '真实模型理解、虚构广州行程和获准深圳副本重排通过' if chat else '本轮未执行'} | {'真实模型及高德，停用美团；入场未知仍为待核实，原始行程保留' if chat else '修改执行使用演示规划角色和地图；不代表真实路线全链路验收'} |
 | 对应地点实景 | {'广东省博物馆、白天鹅宾馆的高德实景照片取得并加载通过' if photos else '本轮未执行'} | 两处小样本；不保证所有地点有照片，未替代照片使用授权审核 |
 | 真实接口历史 | 2026-10-15 广州两日生成、预算修改、历史及导出；2026-10-16 武汉酒店地址定位有通过记录 | 当前源码有后续修改，本轮未重跑这些历史端到端样本 |
 | 美团真实查询 | {'FastAPI 查询、保存、读取和导出通过' if meituan and meituan['passed'] else '本轮未重测；此前有通过记录' if earlier_meituan and earlier_meituan['passed'] else '本轮未通过'} | 地图/规划角色为隔离夹具；仅美团 CLI 真实请求，不代表真实路线或票务库存验收 |

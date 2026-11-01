@@ -18,22 +18,25 @@ from scripts.desktop_launcher import ROOT, Launcher
 
 
 class PhotoFixtureLauncher(Launcher):
-    def __init__(self, wrapper, **kwargs):
+    def __init__(self, wrapper, api_wrapper=None, **kwargs):
         super().__init__(**kwargs)
         self.wrapper = wrapper
+        self.api_wrapper = api_wrapper
 
     def start(self, service):
-        if service != "ui":
+        if service != "ui" and not self.api_wrapper:
             return super().start(service)
-        command = [str(self.python), "-m", "streamlit", "run", str(self.wrapper), "--server.address", "127.0.0.1",
-                   "--server.port", str(self.ui_port), "--server.headless", "true"]
+        command = ([str(self.python), "-m", "uvicorn", self.api_wrapper.stem + ":app", "--app-dir", str(self.api_wrapper.parent),
+                    "--host", "127.0.0.1", "--port", str(self.api_port)] if service == "api" else
+                   [str(self.python), "-m", "streamlit", "run", str(self.wrapper), "--server.address", "127.0.0.1",
+                    "--server.port", str(self.ui_port), "--server.headless", "true"])
         with (ROOT / ".local/assistant-browser-ui.log").open("ab") as log:
             process = subprocess.Popen(command, cwd=ROOT, env=self.env, stdin=subprocess.DEVNULL, stdout=log,
                 stderr=log, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         self.processes.append((service, process))
         deadline = time.monotonic() + 40
         while time.monotonic() < deadline:
-            if self.healthy("ui"):
+            if self.healthy(service):
                 return True
             if process.poll() is not None:
                 raise RuntimeError("Fixture UI failed")
@@ -58,8 +61,27 @@ assets = { {a['url']: str(photo_dir / a['file']) for a in assets}!r}
 photos.fetch_photo = lambda url: ("image/jpeg", Path(assets[url]).read_bytes()) if url in assets else None
 runpy.run_path({str(ROOT / 'app/ui.py')!r}, run_name="__main__")
 ''', encoding="utf-8")
+    api_wrapper = out / f"assistant_api_fixture_{uuid.uuid4().hex}.py"
+    api_wrapper.write_text(f'''import asyncio,sys
+sys.path.insert(0, {str(ROOT)!r})
+from app.main import app
+from app.assistant import TourAssistant
+service=app.state.service
+original=service.revise
+async def slow_revise(*args,**kwargs):
+    await asyncio.sleep(2)
+    return await original(*args,**kwargs)
+service.revise=slow_revise
+base=TourAssistant(service)
+async def decide(message,trip,history):
+    result,_=await base.decide(message,trip,history)
+    if result.action=='revise':
+        result.reply='好的，我会按你的要求重新安排，其他条件保持不变。'
+    return result
+app.state.tour_assistant=TourAssistant(service,decide)
+''', encoding="utf-8")
     path = out / f"browser-{uuid.uuid4().hex}.sqlite3"
-    launcher = PhotoFixtureLauncher(wrapper, api_port=free_port(), ui_port=free_port(), env={"TRAVEL_MODE": "demo",
+    launcher = PhotoFixtureLauncher(wrapper, api_wrapper, api_port=free_port(), ui_port=free_port(), env={"TRAVEL_MODE": "demo",
         "DEEPSEEK_API_KEY": "", "AMAP_API_KEY": "", "MEITUAN_TRAVEL_ENABLED": "false", "TRAVEL_DB": str(path)})
     report = {"passed": False, "checked_at": datetime.now(ZoneInfo("Asia/Shanghai")).isoformat(),
         "scope": "Chrome with demo planning/chat; cached genuine AMap POI photos injected for visual QA, no live planning",
@@ -112,6 +134,10 @@ runpy.run_path({str(ROOT / 'app/ui.py')!r}, run_name="__main__")
                 report["checks"].append("greeting gets a customer-service reply without changing itinerary")
                 chat.fill("预算改成4500元")
                 chat.press("Enter")
+                expect(page.get_by_text("好的，我会按你的要求重新安排，其他条件保持不变。", exact=True)).to_be_visible(timeout=1500)
+                assert api.get(f"/trips/{trip.id}").json()["version"] == 2
+                page.locator(".st-key-tour_assistant").screenshot(path=str(out / "assistant-progress.png"))
+                report["checks"].append("model acknowledgement is visible while delayed replanning is still running")
                 expect(page.get_by_test_id("stChatMessage").last).to_contain_text("已根据你的意见重新安排", timeout=30000)
                 saved = api.get(f"/trips/{trip.id}").json()
                 assert saved["version"] == 3 and saved["constraints"]["budget"] == 4500
@@ -130,11 +156,23 @@ runpy.run_path({str(ROOT / 'app/ui.py')!r}, run_name="__main__")
                 recent.first.click()
                 page.get_by_role("button", name="重新发送刚才的消息", exact=True).click()
                 expect(page.get_by_test_id("stChatMessage")).to_have_count(6, timeout=30000)
+                expect(page.get_by_test_id("stChatMessage").last).to_contain_text("已根据你的意见重新安排", timeout=30000)
                 saved = api.get(f"/trips/{trip.id}").json()
                 assert saved["version"] == 4 and saved["constraints"]["budget"] == 4000
                 assert repository.pending_chat(trip.id) is None
                 page.locator(".st-key-tour_assistant").screenshot(path=str(out / "assistant-chat.png"))
                 report["checks"].append("interrupted chat is recovered after page reload using the original request ID, saving one version")
+                before = api.get(f"/trips/{trip.id}").json()
+                chat.fill("第二天轻松点，少走路")
+                chat.press("Enter")
+                expect(page.get_by_test_id("stChatMessage")).to_have_count(8, timeout=30000)
+                expect(page.get_by_test_id("stChatMessage").last).to_contain_text("第2天", timeout=30000)
+                after = api.get(f"/trips/{trip.id}").json()
+                assert after["version"] == 5 and after["days"][0] == before["days"][0]
+                assert any(rule.get("reduce_walking") and rule["day"] == 2 for rule in after["constraints"]["day_rules"])
+                expect(page.get_by_test_id("stChatMessage").last).to_contain_text("第2天")
+                page.locator(".st-key-tour_assistant").screenshot(path=str(out / "assistant-chat.png"))
+                report["checks"].append("relax second day and reduce walking replans automatically, reports concrete changes and preserves first day")
                 assert not errors, errors
                 report["checks"].append("no browser JavaScript errors")
                 report["passed"] = True
@@ -145,6 +183,8 @@ runpy.run_path({str(ROOT / 'app/ui.py')!r}, run_name="__main__")
         report["screenshots"] = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in out.glob("*-layout.png")}
         if (out / "assistant-chat.png").is_file():
             report["screenshots"]["assistant-chat.png"] = hashlib.sha256((out / "assistant-chat.png").read_bytes()).hexdigest()
+        if (out / "assistant-progress.png").is_file():
+            report["screenshots"]["assistant-progress.png"] = hashlib.sha256((out / "assistant-progress.png").read_bytes()).hexdigest()
         (out / "browser-check.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     print(json.dumps(report, ensure_ascii=False))
 

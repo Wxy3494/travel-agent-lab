@@ -158,6 +158,16 @@ class TravelService:
                             point = await provider.lodging(city, address, c)
                             facts[city].lodging = point
                             facts[city].evidence_ids.append(point.evidence_id)
+                        if previous and request.autonomous:
+                            for city in c.cities:
+                                if facts[city].lodging or c.anchors.get(city) and c.anchors[city].hotel_id:
+                                    continue
+                                saved_stay = next((d.suggested_stay for d in previous.days if d.city == city and d.suggested_stay), None)
+                                if saved_stay:
+                                    point = next((p for p in facts[city].hotels if p.id == saved_stay.id), None)
+                                    point = point or await provider.by_id(city, saved_stay.id, c, "hotel")
+                                    if point:
+                                        facts[city].lodging = point
                         raw_cities = [("origin", submitted.origin, c.origin), *[("cities", raw, canonical)
                             for raw, canonical in zip(submitted.cities, c.cities, strict=True)]]
                         for field, raw, canonical in raw_cities:
@@ -210,7 +220,7 @@ class TravelService:
                         result.admission_verification = True
                         for attempt in range(self.settings.max_repairs + 1):
                             selection = await agents.select(c, facts, feedback)
-                            selection = apply_day_choices(selection, c, previous, reuse_days, afternoon_day)
+                            selection = apply_day_choices(selection, c, previous, reuse_days, afternoon_day, facts)
                             if attempt == 0:
                                 if request.autonomous:
                                     recommend_stays(c, selection, facts)
@@ -222,7 +232,7 @@ class TravelService:
                             selection, result.visit_checks, admission_notes = await self.admission_service.arrange(
                                 c, selection, facts, provider, visit_cache, visit_budget,
                                 result.travel_info.references if result.travel_info else [])
-                            if reuse_days and any(check.enforced for check in result.visit_checks):
+                            if reuse_days and admission_changes_saved_days(result.visit_checks, previous, reuse_days, selection):
                                 reuse_days, afternoon_day = set(), None
                                 result.revision_scope = {"expanded": True, "preserved_days": [],
                                     "explanation": "入场资料已重新核对，需要复核全部到访日期和费用，原有需求保持不变。"}
@@ -351,7 +361,31 @@ def revision_scope(result, previous, revision, prompt):
     return set(), None
 
 
-def apply_day_choices(selection, c, previous, reuse, afternoon_day):
+def admission_changes_saved_days(checks, previous, reused, selection):
+    """Unknown admission facts remain warnings/errors; actual rule changes require rescheduling."""
+    selected = {d.day: d.place_ids for d in selection.days}
+    for day in previous.days:
+        if day.day not in reused:
+            continue
+        visits = [e for e in day.events if e.kind == "visit"]
+        if selected.get(day.day) != [e.place_id for e in visits]:
+            return True
+        for event in visits:
+            check = next((v for v in checks if v.enforced and v.place_id == event.place_id and v.on_date == day.date), None)
+            if check is None:
+                continue
+            if check.opening_status == "closed" or check.availability == "sold_out":
+                return True
+            start, end = event.start[:5], event.end[:5]
+            if check.opening_status == "open" and (not any(start >= w.start.strftime("%H:%M") and end <= w.end.strftime("%H:%M") for w in check.windows)
+                    or check.last_entry and start >= check.last_entry.strftime("%H:%M")):
+                return True
+            if check.ticket_price is not None and any(abs(getattr(event.cost, bound) - check.ticket_price * previous.constraints.people) > .005 for bound in ("low", "high")):
+                return True
+    return False
+
+
+def apply_day_choices(selection, c, previous, reuse, afternoon_day, facts=None):
     days = []
     for d in selection.days:
         ids = c.day_place_ids.get(d.day, d.place_ids)
@@ -367,7 +401,11 @@ def apply_day_choices(selection, c, previous, reuse, afternoon_day):
                 old_ids = [e.place_id for e in previous.days[d.day - 1].events if e.kind == "visit"]
                 mandatory = {b.place_id for b in c.bindings if b.field == "must_visit"}
                 old_ids.sort(key=lambda pid: pid not in mandatory)
-                ids = old_ids[:max(len(d.place_ids), len([pid for pid in old_ids if pid in mandatory]))]
+                rule = next((r for r in c.day_rules if r.day == d.day), None)
+                if rule and rule.reduce_walking and facts:
+                    ids = [pid for pid in old_ids if any(p.id == pid for p in facts[d.city].places)] or ids
+                else:
+                    ids = old_ids[:max(len(d.place_ids), len([pid for pid in old_ids if pid in mandatory]))]
             d = d.model_copy(update={"place_ids": ids})
         days.append(d)
     return Selection(days=days)

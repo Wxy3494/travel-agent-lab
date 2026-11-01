@@ -35,6 +35,7 @@ class DayRule(Model):
     start: time | None = None
     end: time | None = None
     pace: Literal["standard", "relaxed"] = "standard"
+    reduce_walking: bool = False
     period: Literal["day", "afternoon"] = "day"
     visit_minutes: int | None = Field(default=None, ge=30, le=240)
 

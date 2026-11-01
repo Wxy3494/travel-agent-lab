@@ -1,11 +1,12 @@
 """A conversational front door to the existing planner, with persistent idempotent turns."""
 import asyncio
 import re
+from copy import deepcopy
 from datetime import date, datetime, timedelta
 from typing import Literal
 from zoneinfo import ZoneInfo
 
-from pydantic import Field, ValidationError, field_validator
+from pydantic import Field, ValidationError, create_model, field_validator
 
 from app.agents import AutoGenAgents
 from app.day_input import day_references
@@ -59,6 +60,67 @@ CONDITION_TOPICS = {"origin": "出发地", "cities": "目的地|城市", "start_
     "lodging_addresses": "住宿地址|酒店地址|住处"}
 KEEP_AFTER = r"(?:不变|照旧|保持原样|沿用原(?:有|来|先)(?:安排|设置)?|维持原(?:有|来|先)|(?:不要|别|不用|不能|不再|不)(?:更改|修改|调整|改变|变动|改|换|动))"
 KEEP_BEFORE = r"(?:(?:不要|别|不用|不能|不再|不)(?:更改|修改|调整|改变|变动|改|换|动)|保持|保留|沿用|维持)"
+AssistantPreferences = create_model("AssistantPreferences", __base__=Model,
+    **{name: (field.annotation, deepcopy(field)) for name, field in ConstraintPatch.model_fields.items() if name in PREFERENCE_FIELDS},
+    pace=(Literal["standard", "relaxed"] | None, None), walking=(Literal["less", "normal"] | None, None))
+
+
+class AssistantWireDecision(AssistantDecision):
+    changes: AssistantPreferences = Field(default_factory=AssistantPreferences)
+
+
+def normalize_preferences(message, trip, decision):
+    changes = dict(decision.changes)
+    pace, walking = changes.pop("pace", None), changes.pop("walking", None)
+    less_walking = bool(re.search(r"少走路|少步行|减少步行|不想走太多|别走太多", message))
+    reset = bool(re.search(r"恢复正常|正常安排|恢复标准|不用轻松|不要太轻松", message))
+    relaxed = (less_walking or bool(re.search(r"轻松|悠闲|休闲|慢一点", message))) and not reset
+    if pace is not None and not ((pace == "relaxed" and relaxed) or (pace == "standard" and reset)):
+        raise ValueError("请告诉我希望哪一天轻松些，我来调整。")
+    if walking is not None and not ((walking == "less" and less_walking) or (walking == "normal" and reset)):
+        raise ValueError("请告诉我希望哪一天减少步行，我来调整。")
+    if relaxed or pace is not None or walking is not None:
+        if trip.constraints.days is None:
+            raise ValueError("请先告诉我旅行天数，我再安排每天的游玩节奏。")
+        references = day_references(message, trip.constraints.days)
+        targets = references or ([decision.target_day] if decision.target_day else list(range(1, trip.constraints.days + 1)))
+        rules = {r["day"]: r for r in changes.get("day_rules", [])}
+        for day in targets:
+            rules[day] = {**rules.get(day, {}), "day": day, "pace": "relaxed" if relaxed else pace or "standard"}
+            if less_walking or walking is not None:
+                rules[day]["reduce_walking"] = walking != "normal"
+        changes["day_rules"] = list(rules.values())
+    return changes
+
+
+def revision_reply(before, after):
+    if after.status == "failed" or after.questions or not after.days:
+        return planning_reply(after, changed=True)
+    summaries = []
+    for old, new in zip(before.days, after.days, strict=False):
+        if old == new:
+            continue
+        old_visits = [e.title for e in old.events if e.kind == "visit"]
+        visits = [e.title for e in new.events if e.kind == "visit"]
+        old_walk = sum(s.distance or 0 for e in old.events for s in e.route_steps if s.kind == "walk")
+        new_walk = sum(s.distance or 0 for e in new.events for s in e.route_steps if s.kind == "walk")
+        details = f"第{new.day}天安排" + ("、".join(visits) if visits else "自由活动和休息")
+        if len(old_visits) != len(visits):
+            details += f"，景点从{len(old_visits)}处调整为{len(visits)}处"
+        if old_walk and new_walk:
+            details += f"，接驳步行约从{round(old_walk)}米调整为{round(new_walk)}米"
+        elif old.travel_minutes != new.travel_minutes:
+            details += f"，交通从{old.travel_minutes}分钟调整为{new.travel_minutes}分钟"
+        summaries.append(details)
+    reply = "已根据你的意见重新安排。" + "；".join(summaries[:3]) + "。" if summaries else planning_reply(after, changed=True)
+    preserved = after.revision_scope.get("preserved_days", [])
+    if preserved:
+        reply += "其他日期保留原安排。"
+    if after.constraints.budget == before.constraints.budget:
+        reply += f"全团预算仍为{after.constraints.budget:g}元。"
+    if any(i.severity == "error" for i in after.issues):
+        reply += "部分时间或入场条件仍需确认，具体提示已放在上方行程中。"
+    return reply
 
 
 def protected_changes(message, changes):
@@ -80,7 +142,8 @@ def protected_changes(message, changes):
 
 def planning_reply(trip, changed=False):
     if trip.status == "failed":
-        return "这次暂时没能完成安排，已有记录还在。你可以再告诉我一次需求，我会继续处理。"
+        cause = issue_message(trip.issues[0]) if trip.issues else "查询暂时没有完成"
+        return "这次没有完成新的安排：" + cause + "。之前的行程记录仍然保留。"
     if trip.questions:
         if trip.clarifications:
             choices = [q.query + "：" + "；".join(p.name + ("（" + p.address + "）" if p.address else "") for p in q.options[:3])
@@ -97,8 +160,8 @@ def planning_reply(trip, changed=False):
 
 
 def safe_patch(message, trip, decision):
-    changes = {k: v for k, v in decision.changes.items() if k in PREFERENCE_FIELDS}
-    if set(decision.changes) - PREFERENCE_FIELDS:
+    changes = normalize_preferences(message, trip, decision)
+    if set(changes) - PREFERENCE_FIELDS:
         raise ValueError("我需要先核对相关地点或预约信息，再进行调整。请直接说明想改变的条件。")
     changes = protected_changes(message, changes)
     raw = trip.constraints.model_dump(mode="json")
@@ -191,15 +254,18 @@ class TourAssistant:
                 "一般回复两三句话，语气自然，直接称呼你。"
                 "咨询、问原因、致谢用answer，不修改行程。明确要求改安排用revise，changes仅含用户偏好；未提到的预算、人数、日期、城市、必去保留。"
                 "按天修改给target_day。changes字段不得包含内部编号、核验事实或预约确认。缺信息时answer只问最关键的问题。"
+                "例如第二天轻松点少走路：action=revise,target_day=2,changes={day_rules:[{day:2,pace:relaxed,reduce_walking:true}]}。"
+                "日序字段是day，不是day_index；不要自创未提供的参数。客人说就这样或好的时通常answer确认当前安排，不要再次修改。"
                 "已有候选且客人明确选了某地点用choose，choices必须来自给定候选。要求重新查入场规则用refresh。"
                 "只有客人明确已经完成预约并给出景点、日期、时段、人数才用booking，booking含place_name,on_date,start,end,people。"
                 "要求恢复历史才用restore，version为目标版本。任何时候都不代客预订付款，不编造房价、图片、闭馆及已预约事实。"
-                "revise的reply只是意图理解，不要声称已经更新成功；更新结果由系统核验后回复。", payload, AssistantDecision)
-            return result, agents.metrics()["model_calls"]
+                "revise的reply用一句自然的话及时回应客人说明将如何安排，不要声称已经更新成功；更新结果由系统核验后回复。", payload, AssistantWireDecision)
+            return AssistantDecision(**{**result.model_dump(exclude={"changes"}),
+                "changes": result.changes.model_dump(mode="json", exclude_unset=True, exclude_none=True)}), agents.metrics()["model_calls"]
         finally:
             await agents.close()
 
-    async def handle(self, trip_id, request):
+    async def handle(self, trip_id, request, progress=None):
         repo = self.service.repository
         trip = repo.get(trip_id)
         if trip is None:
@@ -212,16 +278,20 @@ class TourAssistant:
             return turn["response"]
         claim = turn["claim"]
         try:
-            return await self.handle_claimed(trip, request, turn)
+            return await self.handle_claimed(trip, request, turn, progress)
         finally:
             # Graceful cancellation releases immediately; a dead process is recovered by lease expiry.
             repo.release_chat(claim)
 
-    async def handle_claimed(self, trip, request, turn):
+    async def handle_claimed(self, trip, request, turn, progress=None):
         repo, trip_id, claim = self.service.repository, trip.id, turn["claim"]
+        def update(stage, message):
+            if progress:
+                progress({"stage": stage, "message": message})
         if turn["result_version"] is not None:
             committed = repo.get(trip_id, turn["result_version"])
-            response = {"reply": planning_reply(committed, changed=True), "trip": trip.model_dump(mode="json"),
+            original = repo.get(trip_id, request.base_version)
+            response = {"reply": revision_reply(original, committed) if original else planning_reply(committed, changed=True), "trip": trip.model_dump(mode="json"),
                         "changed": True, "model_calls": 0}
             if trip.version != committed.version:
                 response["reply"] = "刚才的修改已经保存，无需再次执行。我已为你加载当前最新安排。"
@@ -233,7 +303,18 @@ class TourAssistant:
                 raise VersionConflict("行程已有新安排，我已为你加载最新版，请再告诉我想调整的内容。")
             day_references(request.message, trip.constraints.days or 30)
             async with asyncio.timeout(self.service.settings.timeout):
-                decision, calls = await self.decide(request.message, trip, repo.messages(trip_id))
+                update("understanding", "收到，我正在结合当前行程理解你的想法。")
+                history = repo.messages(trip_id)
+                effective_message = request.message
+                confirmation = bool(re.fullmatch(r"(?:就这样|就按这个|就按你说的|好的|好|可以|没问题)[！!。\s]*", effective_message))
+                if confirmation:
+                    prior = history[:-1]
+                    if prior and prior[-1]["content"].startswith("我需要先核对相关地点或预约信息"):
+                        effective_message = next((m["content"] for m in reversed(prior) if m["role"] == "user" and
+                            re.search(r"轻松|少走路|少步行", m["content"])), effective_message)
+                decision, calls = await self.decide(effective_message, trip, history)
+                if confirmation and effective_message == request.message and decision.action != "answer":
+                    decision = AssistantDecision(reply="好的，就按当前这版安排。之后有新的想法，随时告诉我。")
                 if decision.action == "answer":
                     reply = plain_text(decision.reply) or "我在的，直接告诉我你的旅行想法就好。"
                     if re.search(r"已(?:经)?(?:修改|更新|调整|预订|付款|订好|预约成功)", reply):
@@ -258,26 +339,34 @@ class TourAssistant:
                             raise ValueError("没有找到对应的旧安排，请说明想恢复的版本或需求。")
                         changes = saved.constraints.model_dump(mode="json")
                     else:
-                        changes = safe_patch(request.message, trip, decision)
+                        changes = safe_patch(effective_message, trip, decision)
                         if not changes:
                             raise ValueError("请再说具体一点，比如哪天轻松些、想换什么景点，或者新的预算。")
-                    changes = protected_changes(request.message, changes)
+                    changes = protected_changes(effective_message, changes)
                     if not changes:
                         raise ValueError("已保留你要求不变的条件。这次没有更改行程，你可以告诉我具体想调整哪一天或哪些活动。")
                     remaining_calls = self.service.settings.max_model_calls - calls
                     if remaining_calls < 1:
                         raise ValueError("本次查询额度已用完，已有安排已保留。稍后再告诉我这条需求，我继续处理。")
+                    acknowledgement = plain_text(decision.reply)
+                    if not acknowledgement or re.search(r"已(?:经)?(?:修改|更新|调整|预订|付款|订好|预约成功)", acknowledgement):
+                        acknowledgement = "好的，我会按你的要求重新安排，保留没有要求改变的条件。"
+                    update("planning", acknowledgement)
+                    update("checking", "正在重新安排活动、查询路线并核对费用，完成后会自动更新上方行程。")
                     current = await self.service.revise(trip_id, RevisionRequest(base_version=trip.version, changes=changes,
                         target_day=decision.target_day, target_period=decision.target_period, autonomous=True), model_budget=remaining_calls, chat_claim=claim)
                 if not reply:
-                    reply = planning_reply(current, changed=current.version != trip.version)
+                    reply = revision_reply(trip, current) if current.version != trip.version else planning_reply(current)
         except asyncio.CancelledError:
             repo.release_chat(claim)
             raise
         except (ValueError, ValidationError, VersionConflict) as exc:
             current = repo.get(trip_id)
             reply = str(exc) if not isinstance(exc, ValidationError) else "这些条件还有冲突，请确认日期、人数和预算，我来继续协调。"
-        except (ProviderError, TimeoutError):
+        except ProviderError as exc:
+            current = repo.get(trip_id)
+            reply = str(exc) if exc.code.startswith("model_") or exc.code == "missing_model_key" else "查询暂时未完成，已有安排还在。请稍后重试刚才的消息。"
+        except TimeoutError:
             current = repo.get(trip_id)
             reply = "我暂时没能完成这次查询或调整，已有安排还在。你可以稍后再告诉我一次。"
         except Exception:  # noqa: BLE001 - Never expose model/provider exceptions or credentials.
