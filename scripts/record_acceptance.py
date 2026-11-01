@@ -59,10 +59,12 @@ def record(evidence_dir):
                 raise ValueError("Browser screenshot digest mismatch")
     supplier_path = evidence_dir / "supplier-replay-check.json"
     supplier = json.loads(supplier_path.read_text(encoding="utf-8")) if supplier_path.is_file() else None
+    branch_path = evidence_dir / "identity-live-check.json"
+    branch = json.loads(branch_path.read_text(encoding="utf-8")) if branch_path.is_file() else None
     snapshot = {"checked_at": datetime.now(ZoneInfo("Asia/Shanghai")).isoformat(),
         "pytest": {**counts, "report_sha256": digest(evidence_dir / "pytest.xml")},
         "ruff": "passed", "pip_check": "passed", "offline": evaluations,
-        "historical_live": history, "current_live_end_to_end": "not_rerun_no_paid_model_or_map_calls",
+        "historical_live": history, "current_live_end_to_end": "not_rerun_full_route_model_end_to_end",
         "meituan_live": {"passed": meituan["passed"], "scope": meituan["scope"],
             "checked_at": meituan["checked_at"], "report_sha256": digest(meituan_path)} if meituan else "not_run",
         "historical_meituan_live": {"passed": earlier_meituan["passed"], "scope": earlier_meituan["scope"],
@@ -76,6 +78,9 @@ def record(evidence_dir):
             "scope": browser["scope"], "checked_at": browser["checked_at"],
             "report_sha256": digest(browser_path)} if browser else None,
         "current_supplier_probe": {**supplier, "report_sha256": digest(supplier_path)} if supplier else None,
+        "hotel_identity_probe": {"scope": branch["scope"], "identity_confirmed": branch["identity_confirmed"],
+            "amap_calls": branch.get("amap_calls", 0), "meituan_calls": branch.get("meituan_calls", 0),
+            "report_sha256": digest(branch_path)} if branch else None,
         "delivery": {"type": "source_only_using_existing_dependencies", "fresh_machine_install": "not_run",
                      "license": "not_selected", "published": False},
         "docker_runtime": "not_run", "cloud_ci": "not_run", "independent_learning": "not_evaluated",
@@ -93,17 +98,18 @@ def record(evidence_dir):
 | 离线场景 | v3 {evaluations['v3']['passed']}/{evaluations['v3']['total']}；v2 {evaluations['v2']['passed']}/{evaluations['v2']['total']} | 模型调用为零；已知回归，非盲测 |
 | 发布包界面 | 独立进程解压后运行 AppTest，CSS 加载、JPG 嵌入通过 | 复用本机依赖，未在全新机器安装 |
 | 浏览器交互 | {'本机 Chrome 实测' + str(len(browser['checks'])) + '项通过，保存错误和有效表单截图' if browser else '本轮未执行'} | {'独立演示API与数据库，不调用真实模型、地图或票务接口' if browser else 'AppTest不替代浏览器验收'} |
-| 真实接口历史 | 2026-10-15 广州两日生成、预算修改、历史及导出；2026-10-16 武汉酒店地址定位有通过记录 | 当前源码有后续修改，本轮未重新发送模型或地图请求 |
+| 真实接口历史 | 2026-10-15 广州两日生成、预算修改、历史及导出；2026-10-16 武汉酒店地址定位有通过记录 | 当前源码有后续修改，本轮未重跑这些历史端到端样本 |
 | 美团真实查询 | {'FastAPI 查询、保存、读取和导出通过' if meituan and meituan['passed'] else '本轮未重测；此前有通过记录' if earlier_meituan and earlier_meituan['passed'] else '本轮未通过'} | 地图/规划角色为隔离夹具；仅美团 CLI 真实请求，不代表真实路线或票务库存验收 |
-| 当前供应商试查 | {str(supplier['queries']) + '次只读查询取得回复，景点参考匹配通过' if supplier else '本轮无新增试查'} | {'酒店分店名称和金额有差异，可靠房价未通过；路线上下文为夹具，没有真实模型/地图全链路验收' if supplier else '见历史记录'} |
+| 景点参考试查 | {str(supplier['queries']) + '次只读查询取得回复，景点参考匹配通过' if supplier else '本轮无新增景点试查'} | {'酒店分店名称和金额有差异，可靠房价未通过；路线上下文为夹具，没有真实模型/地图全链路验收' if supplier else '酒店分店试查另列下行'} |
+| 分店地址试查 | {'高德地点与美团只读查询已执行；' + ('分店唯一匹配' if branch['identity_confirmed'] else '未能确认分店') if branch else '本轮未执行'} | {'当前回复缺少完整门牌地址，不将其他分店价格套用；不是实时房价验收' if branch and not branch['identity_confirmed'] else '分店确认不代表房价与库存核实'} |
 | 官网入场资料 | {str(official['verified']) + '/' + str(official['total']) + ' 个适配场馆实际取得规则' if official else '本轮未查询'} | {official_notes}。常规规则不代表临时公告、实时余量或预约成功 |
 | 真实全覆盖 | 未通过完整验收 | 其他路线、实时房价/房态/余票、七天天气厂商、30天真实规划仍未验收 |
 | Docker、云端 CI | 本轮未运行 | 配置不等于运行证据 |
 | Git 与外发 | 本地基线和修复提交；ZIP 清单记录最终提交与各文件 SHA256 | 无外部推送；未选开源许可证；不能伪称已有远端历史或云端 CI 成绩 |
 
-本轮调整：侧栏最近5条与完整历史搜索分页，移除策略、编号和调试JSON；历史摘要在原数据库中迁移保存，超过500条也能查询。美团景点与酒店参考整合到每日安排，无冲突的开放时段与常规闭馆提示参与排程，但不冒充官方核验、可靠实时房价或已预约。详见 [历史与资料整合](PRODUCT_HISTORY_REFERENCES.md)。表单、往返交通及景点核验继续纳入完整回归。酒店只读探针取得回复，但含金额和分店名称差异，未作为可靠报价验收。
+本轮调整：相邻步行合并，保存真实步行段起终点并添加高德步行链接；费用明细移除原始来源清单和重复说明。酒店分店结合完整地址与唯一高德地点确认，地址不足或候选歧义时不绑定报价。详见 [步行导航与分店](NAVIGATION_AND_BRANCHES.md)。表单、历史、资料整合、往返交通及景点核验继续纳入完整回归。
 
-{'浏览器检查使用独立 Chrome。报告记录浏览器版本、交互结果与截图SHA256；历史和参考数据均为隔离演示夹具。' if browser else '本轮没有浏览器截图验收。'}
+{'浏览器检查使用独立 Chrome。历史和参考数据为隔离演示夹具；步行链接弹窗参数通过，外部高德页面由测试拦截，手机APP实际调起未验收。' if browser else '本轮没有浏览器截图验收。'}
 
 证据目录：`{evidence_dir.relative_to(ROOT).as_posix() if evidence_dir.is_absolute() else evidence_dir.as_posix()}`。源码和配置哈希保存在机器摘要中；文档与摘要自身不纳入该集合以避免自引用，发布包清单另外覆盖它们。
 

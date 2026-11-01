@@ -331,6 +331,14 @@ class Issue(Model):
     severity: Literal["error", "warning"] = "error"
 
 
+class RouteStep(Model):
+    kind: Literal["walk", "transit"]
+    text: str = ""
+    distance: float | None = Field(default=None, ge=0, le=10_000_000)
+    start_location: str | None = None
+    end_location: str | None = None
+
+
 class Event(Model):
     kind: Literal["travel", "visit", "meal", "rest", "wait"]
     start: str
@@ -345,6 +353,7 @@ class Event(Model):
     start_location: str | None = None
     end_location: str | None = None
     route_segments: list[str] = Field(default_factory=list)
+    route_steps: list[RouteStep] = Field(default_factory=list)
     is_return: bool = False
 
 
@@ -371,6 +380,7 @@ class HomeTransfer(Model):
     start_location: str
     end_location: str
     route_segments: list[str] = Field(default_factory=list)
+    route_steps: list[RouteStep] = Field(default_factory=list)
     note: str
 
 
@@ -449,6 +459,10 @@ class TravelReference(Model):
     source_urls: list[str] = Field(default_factory=list, max_length=8)
     windows: list[EntryWindow] = Field(default_factory=list, max_length=8)
     closed_weekdays: list[int] = Field(default_factory=list, max_length=7)
+    address: str = ""
+    location: str = ""
+    identity_confirmed: bool = False
+    identity_note: str = ""
 
 
 class TravelInfo(Model):

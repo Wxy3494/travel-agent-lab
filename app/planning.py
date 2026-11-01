@@ -195,7 +195,7 @@ async def materialize(c, selection, facts, provider, previous=None, reuse_days=N
                   (location(from_city, "departure_station_id", location(from_city, "hotel_id", facts[from_city].location)), from_city),
                   (location(to_city, "arrival_station_id", facts[to_city].location), to_city),
                   (location(to_city, "hotel_id", facts[to_city].location), to_city)]
-        prices, sources, segments, durations = [], [], [], []
+        prices, sources, segments, durations, steps = [], [], [], [], []
         for (start_point, start_city), (end_point, end_city) in pairwise(points):
             if start_point == end_point and start_city == end_city:
                 continue
@@ -205,6 +205,7 @@ async def materialize(c, selection, facts, provider, previous=None, reuse_days=N
             prices.append(route["cost"])
             sources.extend([route["evidence_id"], route.get("cost_evidence_id", route["evidence_id"])])
             segments.extend(route.get("segments", []))
+            steps.extend(route.get("steps", []))
             durations.append(route["minutes"] + (45 if start_city != end_city else 10))
         unit_price = sum_prices(prices)
         quantity = cars if c.transport == "driving" else c.people
@@ -215,7 +216,7 @@ async def materialize(c, selection, facts, provider, previous=None, reuse_days=N
         return HomeTransfer(direction=direction, from_city=from_city, to_city=to_city,
             estimated_minutes=sum(durations), unit_price=unit_price, cost=cost,
             evidence_ids=list(dict.fromkeys(sources)), start_location=points[0][0], end_location=points[-1][0],
-            route_segments=segments,
+            route_segments=segments, route_steps=steps,
             note="往返交通单独安排，不占每日游玩时间。耗时与费用按查询路线估算，含接驳和换乘预留；出行日期、实际车次及到达时间尚未确定。")
 
     for chosen in selection.days:
@@ -290,6 +291,7 @@ async def materialize(c, selection, facts, provider, previous=None, reuse_days=N
                                 evidence_ids=list(dict.fromkeys([route["evidence_id"], cost_ev])),
                                 note=route["note"] + "；表中金额为全团费用；已加换乘缓冲",
                                 start_location=position, end_location=destination, route_segments=route.get("segments", []),
+                                route_steps=route.get("steps", []),
                                 is_return=is_return))
             items.append(BudgetItem(category=title, quantity=multiplier,
                                     unit="车" if c.transport == "driving" else "人",

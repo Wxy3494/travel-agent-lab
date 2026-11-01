@@ -7,6 +7,7 @@ from datetime import timedelta
 
 import httpx
 
+from app.navigation import walking_step
 from app.schemas import CityFacts, Constraints, Evidence, Place, PriceRange
 
 
@@ -337,6 +338,7 @@ class AmapProvider(Provider):
         else:
             path, rows_key = "/v5/direction/transit/integrated", "transits"
             params.update(city1=origin_city, city2=destination_city)
+            params["show_fields"] = "cost,polyline"
         data = await self.get(path, params)
         routes = data.get("route", {}).get(rows_key, [])
         walking_distance = None
@@ -397,16 +399,24 @@ class AmapProvider(Provider):
                 note = "接口未给出费用；按距离计算的预算假设/人，必须复核"
         cost_ev = self.record("estimate", "路线预算规则", note)
         segments = [f"步行 {round(walking_distance)} 米"] if walking_distance is not None else []
+        steps = [walking_step({"distance": walking_distance}, origin, destination)] if walking_distance is not None else []
         for part in item.get("segments", []):
+            walking = part.get("walking")
+            if isinstance(walking, dict):
+                step = walking_step(walking)
+                if step:
+                    steps.append(step)
             bus = part.get("bus", {})
             for line in bus.get("buslines", []):
                 names = [line.get("name"), line.get("departure_stop", {}).get("name"),
                          line.get("arrival_stop", {}).get("name")]
                 segments.append(" → ".join(n for n in names if isinstance(n, str)))
+                steps.append({"kind": "transit", "text": segments[-1]})
             railway = part.get("railway", {})
             if railway.get("name"):
                 segments.append(str(railway["name"]) + "（查询参考，不代表余票）")
+                steps.append({"kind": "transit", "text": segments[-1]})
             if part.get("walking", {}).get("distance"):
                 segments.append(f"步行 {part['walking']['distance']} 米")
         return {"minutes": minutes, "cost": price, "evidence_id": ev, "cost_evidence_id": cost_ev,
-                "note": note, "segments": segments[:30]}
+                "note": note, "segments": segments[:30], "steps": [s for s in steps if s][:100]}

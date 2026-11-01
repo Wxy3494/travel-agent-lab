@@ -1,11 +1,11 @@
 {
-  "checked_at": "2026-11-01T12:28:14.185306+08:00",
+  "checked_at": "2026-11-01T12:55:35.104109+08:00",
   "pytest": {
-    "tests": 269,
+    "tests": 281,
     "failures": 0,
     "errors": 0,
     "skipped": 0,
-    "report_sha256": "455df8ac1890db509d40f5199f26420e33b69a810a8f85cacc2b8b837abf0e53"
+    "report_sha256": "82417b7b640de33b86bd2b98bed015b3c99d8d5c0a13011d111761357f56a510"
   },
   "ruff": "passed",
   "pip_check": "passed",
@@ -14,14 +14,14 @@
       "passed": 30,
       "total": 30,
       "model_calls": 0,
-      "report_sha256": "e4c475753e505de774a56ebe17f3d45c86fe9cab4fff7e9fe348618901f863ea",
+      "report_sha256": "2f286d205507948dc51a87a395e37e257c72487efa43ef1116cb2a0c5c4b352e",
       "fixture_sha256": "7182617ae864b8e3c899668866023e8c3b968bb5936d889de831dbf2f1a94d06"
     },
     "v2": {
       "passed": 10,
       "total": 10,
       "model_calls": 0,
-      "report_sha256": "9c9066d433efdc377be441d79e9b24843310319942b98b9c3c5999b00640d4a8",
+      "report_sha256": "a07239ab414067ecd87b6450966af905673fb85133fb8868dbfe68627ca9aeee",
       "fixture_sha256": "239245320f76b8d12a0fb2a37884e47f6007cc51268112baca9ca9373049d95c"
     }
   },
@@ -41,7 +41,7 @@
       "retested_now": false
     }
   ],
-  "current_live_end_to_end": "not_rerun_no_paid_model_or_map_calls",
+  "current_live_end_to_end": "not_rerun_full_route_model_end_to_end",
   "meituan_live": "not_run",
   "historical_meituan_live": {
     "passed": true,
@@ -57,30 +57,22 @@
     "browser": "151.0.7922.172",
     "checks": [
       "five latest readable history buttons; no ID, strategy or JSON controls",
+      "adjacent walks merge; walking link popup preserves endpoints and walk mode; no raw source dump",
       "attraction and hotel reference content appears inside corresponding day",
       "all 25 histories paginate, search and restore without remembering IDs",
       "no browser JavaScript errors"
     ],
-    "scope": "installed Chrome, isolated demo API; synthetic 25-trip history and clearly labelled reference fixtures",
-    "checked_at": "2026-11-01T12:26:43.083393+08:00",
-    "report_sha256": "b980bd9d93004bbe7cf9aa65a928cb5b4ae5eeed75cf5d9d46e2bd0319d9e8d6"
+    "scope": "installed Chrome, isolated demo API and synthetic fixtures; external navigation popup intercepted, native app not tested",
+    "checked_at": "2026-11-01T12:55:23.163745+08:00",
+    "report_sha256": "8d05a0f24ea7e28e4dfb74c723683cb827d3a00b51764d6ceb72620d5a40afe8"
   },
-  "current_supplier_probe": {
-    "queries": 2,
-    "response_received": true,
-    "scope": "two live read-only Meituan requests; fixture route context; no live DeepSeek or AMap calls",
-    "attraction_reference_matched": true,
-    "hotel_quote_verified": false,
-    "hotel_quote_limitations": [
-      "returned branch name differs from requested branch",
-      "room amounts conflict within response"
-    ],
-    "parser_replay": "06:00-23:00 venue hours distinguished from sightseeing vehicle hours",
-    "raw_reports_sha256": {
-      "hotel-live-probe.json": "4ecfcb1dadac0724327a28d11688fdfc8552a6ad1e0f5d2b3186f85abec2119f",
-      "combined-live-probe.json": "4eba81aa369db3483a485f01f61771a126fdff6f85ea95619a1faf36ce20501b"
-    },
-    "report_sha256": "c3a2072ccf60da82295fd3a407be0dbb404efa23d1010b9492d42f84bf5c1313"
+  "current_supplier_probe": null,
+  "hotel_identity_probe": {
+    "scope": "live AMap address search and Meituan read-only hotel inquiry; no live model or route acceptance",
+    "identity_confirmed": false,
+    "amap_calls": 2,
+    "meituan_calls": 1,
+    "report_sha256": "d2697b62db3d8b09c6175bf7278aaf54794209fbf1befbc48fb75aef5b9e85c1"
   },
   "delivery": {
     "type": "source_only_using_existing_dependencies",
@@ -108,20 +100,22 @@
     "app/day_input.py": "6479f2cedfcf2ae5915f7c75454b4bac7b0d5df59e12fc08a55990c854d7e2e6",
     "app/form_validation.py": "f16b72b15f6ab875206ba886ee5557a2a02e9790e7461b6f8d55e478268a8315",
     "app/history.py": "c6ab5e60ad9bbe73f04293fea56c2dfff6c6e02e21a760c14d8cb323d367f27a",
+    "app/hotel_identity.py": "35575eb097a05211ca179d04040ca46e16261ba7770f88daf1aa5ea0c097ce0f",
     "app/input_parser.py": "f09284d50570f891eb9a8957cd89147393bc9a14a711881fa601eaf00b08ded9",
     "app/main.py": "2d7f9973932ce636b5c1ed67f2793781f5b3a3217d91e1d8afca444f3639c736",
-    "app/meituan.py": "648ed717efea9306b9cf49cb54562ed2e0adc12d9e14f570e0d5a0ccb8b43ad3",
+    "app/meituan.py": "eae35b46e59ae84fe5b8ca7b2850d95226e0bd8aeacf96ad9055596d9576334d",
     "app/model_client.py": "a81a02b5fdfcffb603d506865d561843bbcd94ed699f28816fde014b6bd0ecb8",
     "app/names.py": "b03c39cf0b4a065e89097d94ea697a1bea6b19f6e12c4625a427479b34b60202",
-    "app/planning.py": "63403bbc4ad9c5c0a6e502c28703f1a07dba4b6f5b2a24c14d295f38a9017f03",
+    "app/navigation.py": "c00dfc9f606b353552df44c1ceaa98ed2f26a31369c246d5ed95ac214d2ecc31",
+    "app/planning.py": "0720dc6c29a43e2d4f3481ef89b0d14d4aaf4315cfffc7e432260cc63765ea08",
     "app/presentation.py": "e02ef13778002d6bbd4eec5eb80872ff5ff5df65cec1cfac3dc5665058b1d1cb",
-    "app/providers.py": "04d08f10b12a9d5daa433a9cdb96e59d00db1d11194ff414fa86f9b44fedb203",
-    "app/render.py": "5584ff719c53e37591f03147eb63e4b49e748505f520ce08db96b7b7268fa551",
-    "app/schemas.py": "9b2668c59d4cb7b2823cc5a2be1942c9806740ac95abd07a899b29d9d3cd7da6",
-    "app/service.py": "db2933bf641557700d75bf623b38392bea9292fe348055103b23be243933c2fd",
+    "app/providers.py": "7c1bdbb95758031fff59d748c2a25f996865c77611f0d058446915960a0d95c5",
+    "app/render.py": "8d7a83cc416f69633ef3cdb99eb84b0e8c3e6a4c663c28a33f311a3fd95afb79",
+    "app/schemas.py": "18b2e9aa4939d7b5b952f4edd532d5ee422c2c1fd31e85a0cefab8308c9074f4",
+    "app/service.py": "5d508c23863257c7a7c9670c62372d41be8888b4e747f06db58552a9e0d572fb",
     "app/storage.py": "739f9f4c62191265440608b1bae1ab5695e2df120c33ec5809528f513b1b0a82",
-    "app/travel_references.py": "4f7e49cf9502da2ae543f3d962ac508c9123199596c0e41000e8781ba5c19899",
-    "app/ui.py": "b6ea2448ccc84204b2a697e23c1c443492ae80f5d7e9a7653ec0d1e6ae6be240",
+    "app/travel_references.py": "25f5f7a40b70b894cb3b93631de5666413b9446346f8eeb0173435f614ad8d02",
+    "app/ui.py": "11fe6a3381cb7cc93c775cbf58ae94bc7bc0a90b6163d1e4fba1db8650d0125f",
     "app/ui_theme.css": "9fb74ca9d6ccfdb83a2439e5775f34edf302d52afd5a6de8c1e416ee772b8155",
     "app/weather.py": "41453b15018a118cba7b417eadac5cb1523dc7e58fee2ccafec8df4dbb92464f",
     "compose.yaml": "f029dafd977a5e93140e6df31d822678b5f65eb50efcd408bbfdb705c299e9e3",
@@ -139,14 +133,14 @@
     "scripts/check_admissions.py": "00e1246f50057334d02cb1246c03f6bd86163ef6a5db916b8f25f3b96fb355f0",
     "scripts/check_form_browser.py": "73efd2c29ed397bfb9b8a32e046c2cc0921e28cb8e10cda54fab2c463f4732e6",
     "scripts/check_meituan.py": "232b952eb61a6a2d8a58f468be3c6977f964ba3ab231157c884f6e58d413890e",
-    "scripts/check_product_browser.py": "0539afd22ec82c831744b7cad25467129df63fa6dfe6be17de9921605405b7d5",
+    "scripts/check_product_browser.py": "49b8ced7157fd3bf814f5bf4d1baeecdd2a3e0d061a02815d251016a64ee56e5",
     "scripts/check_release.py": "26afbfbb7e11b5f2c9ae3c648add846fe9ed69d7ea4bb4aa647a100d101a0fa7",
     "scripts/desktop_launcher.py": "0992ec01223e4b71993cbe461d73cf7c329a0b4593c76642d1bd74de431ab018",
     "scripts/doctor.py": "32910bc5e57a01b9d9f2762bb11471fc0a43fbdbe22ea344570653b1fe8ae7f2",
     "scripts/evaluate.py": "319a063c418cd9906d30ef6b718521ad052cfb9e2b7f63b52b90ba4633bc31bb",
     "scripts/live_smoke.py": "acf18697240d8beca9edff5185216b90fed4eea318fcd6c8159a50c108e0797a",
     "scripts/package_public.py": "1ab24273df2e406d1365bb423b1e7e36f85cfe878dfb20cde2e478e78c4cb5e0",
-    "scripts/record_acceptance.py": "836ab8fce29ac21926dc27900e73b17f88524df9fcd051f2c4eeecb60c2b00df",
+    "scripts/record_acceptance.py": "62fef8cbd9a05637b4cc6e603315fd722a2733c3538f04c336070036e102a511",
     "scripts/setup_meituan.py": "4b795004c066c1b0bcfdf02c66b9d6e9638a80d6eaf2a87feb84e0ee7b065d6d",
     "scripts/start.ps1": "8310a4137102a616cb8b594e8beb6309ae73d498173bcbbdbed9618f158c7ec8",
     "tests/conftest.py": "90a53b4228895dc29ab4d5fe5b8c3eb031764cb7c77602d1449244b409da6c80",
@@ -158,12 +152,13 @@
     "tests/test_form_validation.py": "466d284af9d233f35e26b76b8997b0a212aea0a17945b30402be972f2bfc6266",
     "tests/test_home_transport.py": "bec38643aad2ea04aa3d9c4cdd9dacc5cc34b6b1ed2eb3d19d2d7efe9c5ea1d4",
     "tests/test_itinerary_experience.py": "80a310f979d92f33c8f4318da2a70797952aa7143a4c9375e66f394423ea68c2",
-    "tests/test_meituan.py": "12cb083c542a15bebf48fe34d4dd9161bb6dab13e35bcf768c0025b4715c199e",
+    "tests/test_meituan.py": "8dbf7d3019a1bc8f3e2d6ed4a22179a8d20178342f3b752107f0df0eed70df13",
+    "tests/test_navigation_identity.py": "162b5d0cdf82335783dbfa041bfba68242c06452985dd05ed906d336ce032532",
     "tests/test_product_history_references.py": "8f36f8fb07418e5db5bfe56b397e24949a03f008eeafbdd0b33f422b489d1c5e",
     "tests/test_providers.py": "77f11246d16c84979809011b4950539de9cb317e54019237cd38f5b2a8d0fbca",
     "tests/test_review_fixes.py": "8e03ff19a66c7d4dc2d78ab4ba3e08d4e3020da7120ad833e5495bbf1c36cd42",
     "tests/test_service.py": "ae2f82e27300cd1097ad140a16d580e73719d630cf75cec797aa342d434e830d",
-    "tests/test_ui.py": "47b3f5ad41aabccf33d4edd260b0ff41b31c2cdd531463b9365bb653a1ea62d0",
+    "tests/test_ui.py": "87d98a41d083d9af070911c68b046192aa453bf3e4aa509ed5857f15d616d507",
     "tests/test_user_features.py": "e883511bc3dd4d5658d8f90b960a975df232dd43080af7568780381b4549e9ca",
     "启动行旅.cmd": "aced435ca8698149de173837559392715d378613ac3c69186c6e4d7ea1caa91a"
   }

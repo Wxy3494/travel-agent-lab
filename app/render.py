@@ -1,5 +1,6 @@
 import re
 
+from app.navigation import route_lines
 from app.presentation import (
     admission_summary,
     day_description,
@@ -13,6 +14,15 @@ from app.travel_references import matching_reference, references_for
 
 def escape(value):
     return re.sub(r"([\\`*_{}\[\]<>|])", r"\\\1", str(value)).replace("\n", " ")
+
+
+def render_route(value):
+    lines = []
+    for line in route_lines(value):
+        links = [f"[{'步行导航' if len(line['links']) == 1 else f'第{n + 1}段导航'}]({url})"
+                 for n, url in enumerate(line["links"])]
+        lines.append("- " + escape(plain_text(line["text"])) + (" · " + " · ".join(links) if links else ""))
+    return lines
 
 
 def render_markdown(trip):
@@ -37,6 +47,7 @@ def render_markdown(trip):
             label = "去程" if t.direction == "outbound" else "返程"
             lines += [f"- {label}：{escape(t.from_city)} → {escape(t.to_city)}；路线参考约{t.estimated_minutes // 60}小时{t.estimated_minutes % 60}分钟；全团费用估算 ¥{t.cost.low:.2f}–{t.cost.high:.2f}",
                       "  " + escape(t.note)]
+            lines += render_route(t)
         lines.append("")
     for mapping in trip.name_normalizations:
         lines += [f"城市名称：{escape(mapping['submitted'])} → {escape(mapping['canonical'])}", ""]
@@ -50,13 +61,12 @@ def render_markdown(trip):
         if day.departure_note:
             lines += [escape(day.departure_note), ""]
         lines += [escape(day_description(day, trip.status == "ready")), "",
-                  "| 时间 | 活动/交通 | 全团费用区间 | 来源 |", "|---|---|---:|---|"]
+                  "| 时间 | 活动/交通 | 全团费用区间 |", "|---|---|---:|"]
         for event in day.events:
             title = escape(event.title)
             if event.map_url:
                 title = f"[{title}]({event.map_url})"
-            sources = list(dict.fromkeys(plain_text(ev.provider) for ev in trip.evidence if ev.id in event.evidence_ids))
-            lines.append(f"| {event.start}–{event.end} | {title} | ¥{event.cost.low:.2f}–{event.cost.high:.2f} | {'、'.join(sources)} |")
+            lines.append(f"| {event.start}–{event.end} | {title} | ¥{event.cost.low:.2f}–{event.cost.high:.2f} |")
         if day.weather_details:
             lines += ["", *["天气：" + escape(weather_line(w)) +
                 (f"；{escape(w.source)}；更新时间：{escape(w.updated_at or '服务未提供')}" if w.source else "") for w in day.weather_details]]
@@ -67,7 +77,7 @@ def render_markdown(trip):
         if day.route_comparison.get("before_minutes") is not None:
             lines += [f"路线耗时比较：{day.route_comparison['before_minutes']} → {day.route_comparison['after_minutes']}分钟；简单邻近候选比较，非全局最优。"]
         for event in day.events:
-            lines += [f"- {escape(event.title)}：{escape(plain_text(segment))}" for segment in event.route_segments]
+            lines += render_route(event)
             ref = matching_reference(refs, event.place_id) if event.kind == "visit" else None
             if ref:
                 lines += ["", f"### {escape(event.title)} · 入场参考", "",
@@ -90,7 +100,7 @@ def render_markdown(trip):
                   "|---|---:|---:|---:|"]
         for item in b.items:
             lines.append(f"| {escape(item.category)} | {item.quantity} {item.unit} | ¥{item.unit_price.low:.2f}–{item.unit_price.high:.2f} | ¥{item.total.low:.2f}–{item.total.high:.2f} |")
-        lines += ["", f"**总计：¥{b.total.low:.2f}–{b.total.high:.2f}**", "", escape(c.pricing_note), ""]
+        lines += ["", f"**总计：¥{b.total.low:.2f}–{b.total.high:.2f}**", "", "费用为估算，实际以购买页面为准。", ""]
     if trip.travel_info and not refs:
         info = trip.travel_info
         lines += ["## 补充旅行资料（尚未匹配到具体地点）", "", escape(info.message), "", "查询时间：" + info.queried_at.isoformat(), ""]
@@ -112,10 +122,5 @@ def render_markdown(trip):
         lines += ["## 风险与未满足约束", ""] + [f"- {escape(issue_message(i))}" for i in trip.issues] + [""]
     if trip.adjustments:
         lines += ["## 可选择的调整（尚未应用）", ""] + [f"- {escape(a.title)}：{escape(a.impact)}" for a in trip.adjustments] + [""]
-    lines += ["## 来源与数据类型", ""]
-    for ev in trip.evidence:
-        label = f"{plain_text(ev.kind)} · {escape(plain_text(ev.provider))}"
-        lines += [f"- {label}：{escape(plain_text(ev.description))}；查询/记录时间 {ev.fetched_at}" +
-                  (f"；[来源说明]({ev.url})" if ev.url else "")]
     lines += ["", "本系统只提供规划；票价、住宿、开放时间及实际班次请到官方平台确认。"]
     return "\n".join(lines)

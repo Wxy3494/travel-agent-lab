@@ -29,7 +29,7 @@ def targets_for(trip, selection=None, facts=None):
         if day.day < c.days:
             for hotel in hotels:
                 targets.setdefault(("hotel", hotel.id), {"place_id": hotel.id, "name": hotel.name, "city": hotel.city,
-                    "kind": "hotel", "dates": []})["dates"].append(when)
+                    "kind": "hotel", "dates": [], "address": hotel.address, "location": hotel.location})["dates"].append(when)
     return list(targets.values())
 
 
@@ -45,7 +45,8 @@ def parse_references(content, targets):
                    unicodedata.normalize("NFKC", line).lstrip("-* ").startswith(unicodedata.normalize("NFKC", t["name"]) + " ·"))]
         if matches:
             headings.append((offset, max(matches, key=lambda t: len(normalized(t["name"])))))
-        elif label or bold and re.search(r"酒店|宾馆|旅馆|博物馆|公园|景区|风景区", bold[1]):
+        elif label or bold and re.search(r"酒店|宾馆|旅馆|博物馆|公园|景区|风景区", bold[1]) and not re.match(
+                r"酒店(?:地址|详情|价格|名称|房型|信息|设施)", bold[1]):
             headings.append((offset, None))
         offset += len(line)
     if not headings and len(targets) == 1 and normalized(targets[0]["name"]) in normalized(content):

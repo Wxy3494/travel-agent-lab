@@ -13,6 +13,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from app.admissions import safe_url
+from app.hotel_identity import confirm_hotels
 from app.schemas import TravelInfo
 from app.travel_references import parse_references, targets_for
 
@@ -33,7 +34,8 @@ def query_for(trip, selection=None, facts=None):
     selected = rows[:MAX_QUERY_PLACES]
     c = trip.constraints
     context = {"cities": c.cities, "start_date": str(c.start_date), "days": c.days, "people": c.people,
-               "places": selected, "hotels": [{"name": t["name"], "city": t["city"], "checkin": str(min(t["dates"])),
+               "places": selected, "hotels": [{"name": t["name"], "city": t["city"], "address": t["address"],
+                   "location": t["location"], "checkin": str(min(t["dates"])),
                    "checkout": str(max(t["dates"]) + timedelta(days=1)), "rooms": c.rooms or (c.people + 1) // 2}
                    for t in targets if t["kind"] == "hotel"][:9]}
     query = ("只读查询景点入场资料，不创建、修改、支付或取消订单，不请求身份证等个人资料。"
@@ -42,6 +44,7 @@ def query_for(trip, selection=None, facts=None):
         "基础票、起价、套票、讲解和优惠价请区分，价格中的X或XX原样保留。"
         "同时按入住退房日期查询所列酒店的房型、每间每晚房价、税费、取消政策和酒店详情链接；"
         "查不到的酒店写未取得报价，禁止使用其他分店数据或预算估算冒充报价。"
+        "酒店名称不同或有分店时，请结合提供的高德完整地址及坐标查找同一家店，必须逐店列出酒店完整地址（含门牌、楼层），无法确认则明确待确认。"
         "每个景点或酒店单独使用三级标题，标题必须为提供的完整名称，不要改名、合并分馆或缩写。"
         "不要把有商品或可查询理解为已预约；不要推断临时闭馆或免费博物馆余量。行程信息："
         + json.dumps(context, ensure_ascii=False, separators=(",", ":")))
@@ -92,7 +95,7 @@ class MeituanTravelService:
             await asyncio.to_thread(process.wait, timeout=5)
             raise
 
-    async def lookup(self, trip, timeout=None, selection=None, facts=None):
+    async def lookup(self, trip, timeout=None, selection=None, facts=None, provider=None):
         query, fingerprint, count, total = query_for(trip, selection, facts)
         report = TravelInfo(status="unavailable", query_fingerprint=fingerprint, queried_places=count, total_places=total)
         report.queried_hotels = min(9, sum(t["kind"] == "hotel" for t in targets_for(trip, selection, facts)))
@@ -118,6 +121,8 @@ class MeituanTravelService:
                 raise ValueError("Empty content")
             report.status = "success"
             report.references = parse_references(report.content, targets_for(trip, selection, facts))
+            if provider is not None:
+                await confirm_hotels(report, targets_for(trip, selection, facts), provider, trip.constraints)
             report.message = "美团返回的参考资料；具体票种、当日余量和临时闭馆请以原始页面为准，不代表已预约。"
         except FileNotFoundError:
             report.message = "美团查询组件未就绪，请运行项目的美团组件安装脚本。"
@@ -127,7 +132,7 @@ class MeituanTravelService:
             report.message = "美团资料查询失败或返回内容不完整，原有行程已保留。"
         return report
 
-    async def enrich(self, trip, previous=None, timeout=None, selection=None, facts=None):
+    async def enrich(self, trip, previous=None, timeout=None, selection=None, facts=None, provider=None):
         if not self.settings.meituan_enabled or self.settings.mode != "live":
             return
         _, fingerprint, _, _ = query_for(trip, selection, facts)
@@ -140,7 +145,7 @@ class MeituanTravelService:
         if timeout is not None and timeout < 3:
             trip.travel_info = TravelInfo(status="unavailable", message="本次规划已接近等待上限，未追加美团查询；原有行程已保留。")
             return
-        trip.travel_info = await self.lookup(trip, timeout, selection, facts)
+        trip.travel_info = await self.lookup(trip, timeout, selection, facts, provider)
         trip.trace.append({"step": "meituan_reference", "cached": False, "status": trip.travel_info.status,
                            "places": trip.travel_info.queried_places,
                            "tool_calls": int(bool(self.settings.meituan_token and (trip.travel_info.queried_places or trip.travel_info.queried_hotels)))})

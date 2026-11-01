@@ -262,6 +262,24 @@ async def test_recent_five_all_history_search_and_older_page_without_debug_contr
     assert not ui.exception and ui.session_state.trip["id"] == original.id and not ui.session_state.history_open
 
 
+def test_concise_results_hide_source_dump_but_keep_actual_problem_messages(ui):
+    fill_example(ui)
+    submit_form(ui)
+    trip = ui.session_state.trip
+    trip["evidence"][0]["description"] = "RAW_SOURCE_SENTINEL"
+    trip["constraints"]["pricing_note"] = "项目预算假设，非实时价格；请用自己的报价调整"
+    event = next(e for d in trip["days"] for e in d["events"] if e["kind"] == "travel")
+    event["route_steps"] = [{"kind": "walk", "distance": 1549, "start_location": "113,23", "end_location": "113.01,23.01"},
+        {"kind": "walk", "distance": 145, "start_location": "113.01,23.01", "end_location": "113.02,23.02"}]
+    ui.session_state.trip = trip
+    ui.run()
+    text = " ".join(m.value for m in [*ui.markdown, *ui.caption])
+    assert "RAW_SOURCE_SENTINEL" not in text and "请用自己的报价调整" not in text
+    assert "步行共 1694 米" in text and "mode=walk" in text
+    assert not any(b.label == "来源说明" for b in ui.button)
+    assert any(e.label == "费用明细" for e in ui.expander)
+
+
 def test_advanced_time_form_and_adjustment_apply_work(ui):
     from datetime import time
     fill_example(ui)

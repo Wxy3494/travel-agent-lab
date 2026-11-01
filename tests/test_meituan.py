@@ -175,4 +175,5 @@ async def test_ui_and_export_show_reference_without_claiming_booked(service, con
     assert not ui.exception
     assert not any(e.label == "美团景点与门票参考" for e in ui.expander)
     assert any("¥XX起" in m.value for m in ui.markdown)
-    assert any("不代表已预约" in c.value for c in ui.caption)
+    assert any("入场参考" in c.value for c in ui.caption)
+    assert ui.session_state.trip["constraints"]["reservations"] == []

@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 
 from app.config import client_read_timeout
 from app.form_validation import FORM_DEFAULTS, validate_form
+from app.navigation import route_lines
 from app.presentation import (
     admission_summary,
     day_description,
@@ -131,6 +132,13 @@ def revise_choice(trip, changes=None, **options):
                         {"base_version": trip["version"], "changes": changes or {}, **options}))
 
 
+def show_route(value):
+    for line in route_lines(value):
+        links = [f"[{'步行导航' if len(line['links']) == 1 else f'第{n + 1}段导航'}]({url})"
+                 for n, url in enumerate(line["links"])]
+        st.markdown(escape(plain_text(line["text"])) + (" · " + " · ".join(links) if links else ""))
+
+
 def show_trip(trip, latest):
     labels = {"ready": "方案已生成", "needs_review": "行程还需要调整", "needs_input": "还需要补充一些信息",
               "blocked": "这项请求无法执行", "failed": "这次规划未完成"}
@@ -149,7 +157,9 @@ def show_trip(trip, latest):
     for issue in errors[:8]:
         st.warning(issue_message(issue))
     if len(errors) > 8:
-        st.caption(f"另有{len(errors) - 8}条待处理提示，详见景点入场核验和风险与来源。")
+        with st.expander(f"其他{len(errors) - 8}条待处理事项"):
+            for issue in errors[8:]:
+                st.write(issue_message(issue))
     c = trip["constraints"]
     if trip.get("name_normalizations") or c.get("bindings"):
         with st.expander("地点名称确认记录"):
@@ -170,9 +180,8 @@ def show_trip(trip, latest):
                     duration = t["estimated_minutes"]
                     st.markdown(f"**{label}：{t['from_city']} → {t['to_city']}**")
                     st.write(f"路线参考约{duration // 60}小时{duration % 60}分钟 · 全团费用估算 ¥{t['cost']['low']:,.0f}–{t['cost']['high']:,.0f}")
-                    st.caption(t["note"])
-                    for segment in t.get("route_segments", []):
-                        st.caption(plain_text(segment))
+                    st.caption("往返交通单独安排，实际日期与车次请确认。")
+                    show_route(t)
         total = trip["budget"]["total"] if trip["budget"] else None
         if total:
             st.markdown(f"全团估算 **¥{total['low']:,.0f} – {total['high']:,.0f}** · 预算 ¥{c['budget']:,.0f}")
@@ -183,8 +192,6 @@ def show_trip(trip, latest):
             with st.expander(f"第 {day['day']} 天 · {day['date']} · {day['city']}", expanded=False):
                 for weather in day.get("weather_details", []):
                     st.markdown("**天气 · " + escape(weather_line(weather)) + "**")
-                    if weather.get("source"):
-                        st.caption(weather["source"] + " · 更新时间：" + (weather.get("updated_at") or "服务未提供"))
                 if day.get("departure_note"):
                     st.write(day["departure_note"])
                 if c.get("daily_end_scope") == "last_activity":
@@ -199,20 +206,18 @@ def show_trip(trip, latest):
                     if e["map_url"]:
                         title = f"[{title}]({e['map_url']})"
                     st.markdown(f"**{e['start']}–{e['end']}**　{title}")
-                    st.caption(f"¥{e['cost']['low']:.0f}–{e['cost']['high']:.0f} / 全团 · {plain_text(e['note'])}")
+                    if e["kind"] in {"travel", "visit"}:
+                        st.caption(f"全团费用约 ¥{e['cost']['low']:.0f}–{e['cost']['high']:.0f}")
                     check = next((v for v in trip.get("visit_checks", []) if v["place_id"] == e.get("place_id") and v["on_date"] == day["date"]), None)
                     if check:
                         st.caption("入场核验：" + admission_summary(check, c))
                     ref = matching_reference(refs, e.get("place_id")) if e["kind"] == "visit" else None
                     if ref:
-                        st.caption("美团入场参考 · " + trip["travel_info"]["queried_at"] + " · 平台说法尚未独立核验，不代表已预约；以官方当日公告为准")
+                        st.caption("入场参考（待确认）")
                         if day["date"] not in {str(d) for d in ref.dates}:
                             st.caption("这份资料原按" + "、".join(str(d) for d in ref.dates) + "查询；到访日期调整后，当日开放和预约仍需重新确认。")
                         st.markdown(plain_text(reference_body(ref)))
-                        for url in ref.source_urls:
-                            st.markdown(f"[查看参考来源]({url})")
-                    for segment in e.get("route_segments", []):
-                        st.caption(plain_text(segment))
+                    show_route(e)
                 if not day.get("weather_details"):
                     st.write(f"天气：{plain_text(day['weather'])}")
                 st.write(f"备选：{plain_text(day['alternative'])}")
@@ -222,14 +227,17 @@ def show_trip(trip, latest):
                         ref = matching_reference(refs, h["id"], day["date"])
                         hotel = hotel_details(h, c, day["date"], ref, bool(trip.get("travel_info", {}) and trip["travel_info"].get("queried_hotels")))
                         st.markdown(f"**{escape(hotel['name'])}** · [查看地图]({hotel['map_url']}) · [搜索房价]({hotel['search_url']})")
+                        if h.get("address"):
+                            st.caption("地址：" + h["address"])
                         st.caption(hotel["budget_label"])
                         st.caption(hotel["price_note"])
                         if ref:
-                            st.caption("美团报价参考 · 查询时间：" + trip["travel_info"]["queried_at"]
-                                + "；入住日期：" + str(min(ref.dates)) + "起。以下价格来自平台回复，未作为已核实房价计入预算。")
+                            if ref.identity_confirmed:
+                                st.caption("已按高德地址确认分店")
+                            st.caption("房价参考（最终价格以购买页面为准）")
                             st.markdown(plain_text(reference_body(ref)))
     if latest and trip["days"]:
-        with st.expander("预算明细、风险与来源"):
+        with st.expander("费用明细"):
             info = trip.get("travel_info")
             if info and not refs and info.get("content"):
                 st.caption("补充旅行资料：本次回复未能按具体地点匹配，尚未用于排程。")
@@ -240,15 +248,7 @@ def show_trip(trip, latest):
                 st.dataframe([{"项目": i["category"], "数量": f"{i['quantity']} {i['unit']}",
                     "下限 / 元": i["total"]["low"], "上限 / 元": i["total"]["high"]}
                     for i in trip["budget"]["items"]], hide_index=True, width="stretch")
-                st.caption(c["pricing_note"])
-            for issue in trip["issues"]:
-                st.write("• " + issue_message(issue))
-            st.divider()
-            for ev in trip["evidence"]:
-                st.caption(f"{plain_text(ev['kind'])} · {plain_text(ev['provider'])} · {ev['fetched_at']}")
-                st.write(plain_text(ev["description"]))
-                if ev["url"]:
-                    st.link_button("来源说明", ev["url"])
+                st.caption("费用为估算，实际以购买页面为准。")
         st.download_button("下载行程文档", render_markdown(TripResult.model_validate(trip)),
             file_name=f"trip-{trip['id']}-v{trip['version']}.md", mime="text/markdown",
             key=f"download-{trip['id']}-{trip['version']}")

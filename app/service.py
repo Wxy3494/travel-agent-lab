@@ -214,7 +214,7 @@ class TravelService:
                                 if self.settings.meituan_enabled and self.settings.mode == "live" and provider.calls >= self.settings.max_tool_calls:
                                     result.travel_info = TravelInfo(status="unavailable", message="本次资料查询额度已用完，未追加美团查询。")
                                 else:
-                                    await self.meituan_service.enrich(result, previous, min(self.settings.meituan_timeout, remaining), selection, facts)
+                                    await self.meituan_service.enrich(result, previous, min(self.settings.meituan_timeout, remaining), selection, facts, provider)
                             selection, result.visit_checks, admission_notes = await self.admission_service.arrange(
                                 c, selection, facts, provider, visit_cache, visit_budget,
                                 result.travel_info.references if result.travel_info else [])
