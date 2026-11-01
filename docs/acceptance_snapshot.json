@@ -1,11 +1,11 @@
 {
-  "checked_at": "2026-11-01T21:05:57.359611+08:00",
+  "checked_at": "2026-11-01T21:46:39.787155+08:00",
   "pytest": {
-    "tests": 325,
+    "tests": 328,
     "failures": 0,
     "errors": 0,
     "skipped": 0,
-    "report_sha256": "ed49ff79913aaae9ca4e33cfb594c9c57e893623aa9bba2ecde578ffe101b19c"
+    "report_sha256": "32537998381ee97a1dcaa4e977dc1debb56ccc43517ac7446c400dc2b9be2624"
   },
   "ruff": "passed",
   "pip_check": "passed",
@@ -14,14 +14,14 @@
       "passed": 30,
       "total": 30,
       "model_calls": 0,
-      "report_sha256": "7833431ba1c0f8258ad7a94d4b0ee2fc9824f138e40bb9a63a6fc480937ae53f",
+      "report_sha256": "6f10b48853202af7c6439bd044b3d3f7de2515e3d35ba4fcca824b6adfda8e39",
       "fixture_sha256": "7182617ae864b8e3c899668866023e8c3b968bb5936d889de831dbf2f1a94d06"
     },
     "v2": {
       "passed": 10,
       "total": 10,
       "model_calls": 0,
-      "report_sha256": "15575afbb52579d7e1b635ee72536d2216874fe5bd8071b9f8d56df1a73eab1f",
+      "report_sha256": "4137b3b9571b4fe60431fd853e3c7c9952d05ab2f09283ca27391b6a94cd9d41",
       "fixture_sha256": "239245320f76b8d12a0fb2a37884e47f6007cc51268112baca9ca9373049d95c"
     }
   },
@@ -51,64 +51,21 @@
     "report_sha256": "238e0cb95ccc9d862de70789d613d00fceb7c283970890114f793a39f64791c5"
   },
   "official_admission_pages": "not_run",
-  "current_ui": "AppTest_and_isolated_installed_browser",
-  "browser_ui": {
-    "passed": true,
-    "browser": "151.0.7922.172",
-    "checks": [
-      "manual planning panels removed; one tourism assistant chat entry",
-      "attraction and hotel photo cards load below the corresponding content",
-      "greeting gets a customer-service reply without changing itinerary",
-      "chat changes budget and itinerary, saves one new version and replies after completion",
-      "conversation persists after reload and reopening history",
-      "interrupted chat is recovered after page reload using the original request ID, saving one version",
-      "no browser JavaScript errors"
-    ],
-    "scope": "Chrome with demo planning/chat; cached genuine AMap POI photos injected for visual QA, no live planning",
-    "checked_at": "2026-11-01T21:02:39.402777+08:00",
-    "report_sha256": "340abc1bdfd997ba92c54dac667011ad5ca965d6777c3287da8b0c8a434b4994"
-  },
+  "current_ui": "AppTest; no_new_browser_visual_check",
+  "browser_ui": null,
   "current_supplier_probe": null,
   "hotel_identity_probe": null,
   "assistant_live_probe": null,
   "photos_live_probe": null,
-  "fault_regressions": {
-    "passed": true,
-    "scope": "offline deterministic fault injection and UI API tests; no live provider calls",
-    "cases": 30,
-    "checks": [
-      "test_explicitly_preserved_budget_defeats_injected_patch[\\u9884\\u7b97\\u4e0d\\u53d8\\uff0c\\u7b2c\\u4e8c\\u5929\\u8f7b\\u677e\\u4e00\\u70b9]",
-      "test_explicitly_preserved_budget_defeats_injected_patch[\\u4e0d\\u8981\\u6539\\u9884\\u7b97\\uff0c\\u7b2c\\u4e8c\\u5929\\u8f7b\\u677e\\u4e00\\u70b9]",
-      "test_explicitly_preserved_budget_defeats_injected_patch[\\u4fdd\\u6301\\u539f\\u6709\\u9884\\u7b97\\uff0c\\u7b2c\\u4e8c\\u5929\\u8f7b\\u677e\\u4e00\\u70b9]",
-      "test_explicitly_preserved_budget_defeats_injected_patch[\\u9884\\u7b97\\u4fdd\\u6301\\u4e0d\\u53d8\\uff0c\\u7b2c\\u4e8c\\u5929\\u8f7b\\u677e\\u4e00\\u70b9]",
-      "test_explicitly_preserved_budget_defeats_injected_patch[\\u5168\\u56e2\\u9884\\u7b97\\u7167\\u65e7\\uff0c\\u7b2c\\u4e8c\\u5929\\u8f7b\\u677e\\u4e00\\u70b9]",
-      "test_explicitly_preserved_budget_defeats_injected_patch[\\u9884\\u7b97\\u4e0d\\u8981\\u4fee\\u6539\\uff0c\\u7b2c\\u4e8c\\u5929\\u8f7b\\u677e\\u4e00\\u70b9]",
-      "test_explicitly_preserved_budget_defeats_injected_patch[\\u7b2c\\u4e8c\\u5929\\u8f7b\\u677e\\u4e00\\u70b9\\uff0c\\u5176\\u4ed6\\u6761\\u4ef6\\u4e0d\\u53d8]",
-      "test_explicitly_preserved_budget_defeats_injected_patch[\\u9884\\u7b97\\u4fdd\\u6301\\u57286000\\u5143\\u4e0d\\u53d8\\uff0c\\u7b2c\\u4e8c\\u5929\\u8f7b\\u677e\\u4e00\\u70b9]",
-      "test_explicitly_preserved_budget_defeats_injected_patch[\\u9884\\u7b97 \\u4e0d\\u53d8\\uff0c\\u7b2c\\u4e8c\\u5929\\u8f7b\\u677e\\u4e00\\u70b9]",
-      "test_preservation_is_field_specific_and_explicit_budget_change_still_works[\\u4eba\\u6570\\u4e0d\\u53d8\\uff0c\\u53ea\\u6539\\u9884\\u7b97\\u4e3a9000\\u5143-people-5]",
-      "test_preservation_is_field_specific_and_explicit_budget_change_still_works[\\u4e0d\\u8981\\u8c03\\u6574\\u51fa\\u53d1\\u5730\\uff0c\\u53ea\\u6539\\u9884\\u7b97\\u4e3a9000\\u5143-origin-\\u6df1\\u5733]",
-      "test_preservation_is_field_specific_and_explicit_budget_change_still_works[\\u76ee\\u7684\\u5730\\u7167\\u65e7\\uff0c\\u53ea\\u6539\\u9884\\u7b97\\u4e3a9000\\u5143-cities-bad2]",
-      "test_preservation_is_field_specific_and_explicit_budget_change_still_works[\\u5929\\u6570\\u4e0d\\u53d8\\uff0c\\u53ea\\u6539\\u9884\\u7b97\\u4e3a9000\\u5143-days-3]",
-      "test_cancel_during_processing_reopens_and_retries_without_duplicate_messages",
-      "test_crashed_worker_lease_expires_and_old_owner_is_fenced",
-      "test_commit_before_reply_interruption_recovers_receipt_without_replanning[revise]",
-      "test_commit_before_reply_interruption_recovers_receipt_without_replanning[refresh]",
-      "test_v3_pending_turn_migrates_without_rewriting_old_payload",
-      "test_expired_lease_with_atomic_saved_result_recovers_without_model_call",
-      "test_audit_rebuilds_expected_event_ledger_even_after_totals_are_recomputed[remove_all]",
-      "test_audit_rebuilds_expected_event_ledger_even_after_totals_are_recomputed[remove_one]",
-      "test_audit_rebuilds_expected_event_ledger_even_after_totals_are_recomputed[duplicate]",
-      "test_audit_rebuilds_expected_event_ledger_even_after_totals_are_recomputed[wrong_day]",
-      "test_audit_rebuilds_expected_event_ledger_even_after_totals_are_recomputed[wrong_start]",
-      "test_audit_rebuilds_expected_event_ledger_even_after_totals_are_recomputed[wrong_quantity]",
-      "test_audit_rebuilds_expected_event_ledger_even_after_totals_are_recomputed[wrong_cost]",
-      "test_travel_summary_is_compared_even_when_zero[0]",
-      "test_travel_summary_is_compared_even_when_zero[1]",
-      "test_genuine_zero_transport_day_still_passes_independent_audit",
-      "test_reopened_page_recovers_interrupted_chat_with_original_request_id"
-    ],
-    "report_sha256": "2176567c242b3c8f0bd1aa16e5ed59e7b5d586bfde5dcc9e5267de6c943f74e4"
+  "fault_regressions": null,
+  "model_service_diagnostic": {
+    "diagnosed": true,
+    "status_code": 402,
+    "error_type": "insufficient_balance_error",
+    "request_attempts": 1,
+    "scope": "minimal live model request rejected for insufficient balance; no live map or planning acceptance",
+    "account_action_required": "API balance replenishment",
+    "report_sha256": "48f14d537972467174fca36c25112f62438e91eacf91008b717e986e4b490d4e"
   },
   "delivery": {
     "type": "source_only_using_existing_dependencies",
@@ -129,7 +86,7 @@
     "app/__init__.py": "ac3292647f51210329bdf6a0433d4d3891abeea78999b046cd31787657382260",
     "app/adjustments.py": "c859241980872eb54a7a2ac2310103abbb337f823b0fb7b9b03fc0e8b9d2b87c",
     "app/admissions.py": "64235cc60d05dc3ded447ac6801a9a0c4ef0b450574227c1c7c58fe95026c9be",
-    "app/agents.py": "87b4b67fb02b80cd58b727517127c22ae4939462388fcff93882a2e15d8278ac",
+    "app/agents.py": "de6cefcda3b8a843fab4062dc59e8c64fea1a046b7b5c3f53e5ec07fc4f979c4",
     "app/assets/coastal-evening.jpg": "0d689929c55e2be3d970d60aaec5bcecb05d0863ea6fce58d0e58dbded1cc848",
     "app/assistant.py": "ea42a3bdeb64b66bff4e048e31b86989a0feb1310bf7d8d03d8560663816a733",
     "app/audit.py": "ae0c3c4051236d3a2df9b03550bfa305d0f90e24fe4244bf6d7087c93bcf16cc",
@@ -179,7 +136,7 @@
     "scripts/evaluate.py": "319a063c418cd9906d30ef6b718521ad052cfb9e2b7f63b52b90ba4633bc31bb",
     "scripts/live_smoke.py": "acf18697240d8beca9edff5185216b90fed4eea318fcd6c8159a50c108e0797a",
     "scripts/package_public.py": "1ab24273df2e406d1365bb423b1e7e36f85cfe878dfb20cde2e478e78c4cb5e0",
-    "scripts/record_acceptance.py": "1cfdd47bd1ed8b56f031605fc276676571143404cdf511832427be066fff9055",
+    "scripts/record_acceptance.py": "e2a34d713aaa403698b3bb08b577f173f0d61d4d12d5f0214cf803a4948b9caf",
     "scripts/setup_meituan.py": "4b795004c066c1b0bcfdf02c66b9d6e9638a80d6eaf2a87feb84e0ee7b065d6d",
     "scripts/start.ps1": "8310a4137102a616cb8b594e8beb6309ae73d498173bcbbdbed9618f158c7ec8",
     "tests/conftest.py": "90a53b4228895dc29ab4d5fe5b8c3eb031764cb7c77602d1449244b409da6c80",
@@ -192,6 +149,7 @@
     "tests/test_home_transport.py": "bec38643aad2ea04aa3d9c4cdd9dacc5cc34b6b1ed2eb3d19d2d7efe9c5ea1d4",
     "tests/test_itinerary_experience.py": "80a310f979d92f33c8f4318da2a70797952aa7143a4c9375e66f394423ea68c2",
     "tests/test_meituan.py": "8dbf7d3019a1bc8f3e2d6ed4a22179a8d20178342f3b752107f0df0eed70df13",
+    "tests/test_model_errors.py": "78b541900be2ebc8afa23c1278186d713b1af8d69d83d3946ce27c877b2d05dd",
     "tests/test_navigation_identity.py": "162b5d0cdf82335783dbfa041bfba68242c06452985dd05ed906d336ce032532",
     "tests/test_photos.py": "8e0345acfedac50f8ff104e4498b10f17fc4ce57821d4a7d673ed6983e0387ee",
     "tests/test_product_history_references.py": "8f36f8fb07418e5db5bfe56b397e24949a03f008eeafbdd0b33f422b489d1c5e",

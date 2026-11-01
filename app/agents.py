@@ -126,7 +126,11 @@ class AutoGenAgents:
         except ProviderError:
             raise
         except Exception as exc:  # noqa: BLE001 - SDK error text can contain secret-bearing request URLs.
-            self.trace.append({"step": role, "error_type": type(exc).__name__})
+            status = getattr(exc, "status_code", None)
+            self.trace.append({"step": role, "error_type": type(exc).__name__,
+                               **({"status_code": status} if isinstance(status, int) else {})})
+            if status == 402:
+                raise ProviderError("model_balance_insufficient", "模型服务余额不足，暂时无法规划；请在模型开放平台补充 API 余额后重新生成。高德地图配置无需修改。") from None
             raise ProviderError("model_call_failed", "模型调用失败；请核对模型权限、余额及工具调用兼容性") from None
         # Store event types and usage only, never raw model reasoning or tool query URLs.
         self.trace.append({"step": role, "elapsed_ms": round((time.perf_counter() - start) * 1000, 2),
