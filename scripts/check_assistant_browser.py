@@ -1,4 +1,5 @@
 """Real Chrome over demo planning, persisted chat and cached genuine POI photo fixtures."""
+import argparse
 import hashlib
 import json
 import subprocess
@@ -40,19 +41,20 @@ class PhotoFixtureLauncher(Launcher):
         raise RuntimeError("Fixture UI did not become ready")
 
 
-def check():
+def check(evidence_dir=None):
     sys.path.insert(0, str(ROOT / ".local/browser-qa"))
     from playwright.sync_api import expect, sync_playwright
-    out = ROOT / "artifacts/assistant-20261101"
+    out = ROOT / (evidence_dir or "artifacts/assistant-20261101")
     out.mkdir(parents=True, exist_ok=True)
-    assets = json.loads((out / "photo-fixtures.json").read_text(encoding="utf-8"))
+    photo_dir = ROOT / "artifacts/assistant-20261101"
+    assets = json.loads((photo_dir / "photo-fixtures.json").read_text(encoding="utf-8"))
     assert {a["category"] for a in assets} == {"attraction", "hotel"}
     wrapper = out / f"ui-fixture-{uuid.uuid4().hex}.py"
     wrapper.write_text(f'''import sys, runpy
 from pathlib import Path
 sys.path.insert(0, {str(ROOT)!r})
 from app import photos
-assets = { {a['url']: str(out / a['file']) for a in assets}!r}
+assets = { {a['url']: str(photo_dir / a['file']) for a in assets}!r}
 photos.fetch_photo = lambda url: ("image/jpeg", Path(assets[url]).read_bytes()) if url in assets else None
 runpy.run_path({str(ROOT / 'app/ui.py')!r}, run_name="__main__")
 ''', encoding="utf-8")
@@ -121,6 +123,18 @@ runpy.run_path({str(ROOT / 'app/ui.py')!r}, run_name="__main__")
                 expect(page.get_by_test_id("stChatMessage")).to_have_count(4)
                 expect(page.get_by_test_id("stChatMessage").last).to_contain_text("已根据你的意见重新安排")
                 report["checks"].append("conversation persists after reload and reopening history")
+                repository = Repository(path)
+                pending = repository.begin_chat(trip.id, uuid.uuid4().hex, "预算改成4000元", 3)
+                repository.release_chat(pending["claim"])
+                page.reload()
+                recent.first.click()
+                page.get_by_role("button", name="重新发送刚才的消息", exact=True).click()
+                expect(page.get_by_test_id("stChatMessage")).to_have_count(6, timeout=30000)
+                saved = api.get(f"/trips/{trip.id}").json()
+                assert saved["version"] == 4 and saved["constraints"]["budget"] == 4000
+                assert repository.pending_chat(trip.id) is None
+                page.locator(".st-key-tour_assistant").screenshot(path=str(out / "assistant-chat.png"))
+                report["checks"].append("interrupted chat is recovered after page reload using the original request ID, saving one version")
                 assert not errors, errors
                 report["checks"].append("no browser JavaScript errors")
                 report["passed"] = True
@@ -136,4 +150,6 @@ runpy.run_path({str(ROOT / 'app/ui.py')!r}, run_name="__main__")
 
 
 if __name__ == "__main__":
-    check()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--evidence-dir")
+    check(parser.parse_args().evidence_dir)

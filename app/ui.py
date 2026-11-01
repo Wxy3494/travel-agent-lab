@@ -177,6 +177,13 @@ def show_assistant(trip):
         st.subheader("旅游助手")
         st.caption("说说你的想法，我来协调路线、景点和住宿。")
         messages = request("GET", f"/trips/{trip['id']}/messages") or []
+        unfinished = request("GET", f"/trips/{trip['id']}/chat/pending")
+        if unfinished and not st.session_state.get("pending_chat"):
+            st.session_state.pending_chat = {"trip_id": trip["id"],
+                **{k: unfinished[k] for k in ("request_id", "message", "base_version")}}
+        if unfinished:
+            st.caption("刚才的消息正在处理中，可稍后重试以获取回复。" if unfinished["state"] == "running" else
+                       "刚才的消息未完成，点击重新发送即可继续；已经保存的修改不会重复执行。")
         if not messages:
             with st.chat_message("assistant"):
                 st.write(planning_reply(TripResult.model_validate(trip)))

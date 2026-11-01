@@ -54,7 +54,7 @@ class TravelService:
     async def create(self, request):
         return await self.execute(request, str(uuid4()), 1, 0)
 
-    async def revise(self, trip_id, revision, model_budget=None):
+    async def revise(self, trip_id, revision, model_budget=None, chat_claim=None):
         previous = self.repository.get(trip_id)
         if previous is None:
             return None
@@ -70,7 +70,7 @@ class TravelService:
         refresh_only = bool(revision.changes) and set(revision.changes) <= {"reservations", "opening_rules"} and not revision.instruction
         return await self.execute(request, trip_id, previous.version + 1, previous.version,
                                   is_revision=True, explicit_changes=revision.changes, previous=previous, revision=revision,
-                                  saved_selection=self.saved_selection(previous) if refresh_only else None, model_budget=model_budget)
+                                  saved_selection=self.saved_selection(previous) if refresh_only else None, model_budget=model_budget, chat_claim=chat_claim)
 
     def saved_selection(self, previous):
         if previous.constraints.missing() or not previous.days:
@@ -84,7 +84,7 @@ class TravelService:
             place_ids=selected.get(str(index + 1), [e.place_id for e in by_day[index + 1].events if e.kind == "visit"] if index + 1 in by_day else []),
             reason="沿用已选景点，重新核对入场规则和路线。") for index, city in enumerate(schedule)])
 
-    async def refresh_visits(self, trip_id, version):
+    async def refresh_visits(self, trip_id, version, chat_claim=None):
         previous = self.repository.get(trip_id)
         if previous is None:
             return None
@@ -93,10 +93,10 @@ class TravelService:
         request = TripRequest(constraints=previous.constraints, strategy=previous.strategy)
         self.admission_service.pages.clear()
         return await self.execute(request, trip_id, previous.version + 1, previous.version,
-            is_revision=True, previous=previous, saved_selection=self.saved_selection(previous))
+            is_revision=True, previous=previous, saved_selection=self.saved_selection(previous), chat_claim=chat_claim)
 
     async def execute(self, request, trip_id, version, expected, is_revision=False, explicit_changes=None,
-                      previous=None, revision=None, saved_selection=None, model_budget=None):
+                      previous=None, revision=None, saved_selection=None, model_budget=None, chat_claim=None):
         start = time.perf_counter()
         result = TripResult(id=trip_id, version=version, mode=self.settings.mode,
                             strategy=request.strategy, status="failed", constraints=request.constraints)
@@ -311,7 +311,7 @@ class TravelService:
             if result.status == "needs_review" and not result.adjustments:
                 result.adjustments = suggestions(result)
             result.markdown = render_markdown(result)
-        self.repository.save(result, expected)
+        self.repository.save(result, expected, chat_claim=chat_claim)
         return result
 
 def revision_scope(result, previous, revision, prompt):

@@ -117,6 +117,12 @@ def create_app(settings=None, service=None):
             raise HTTPException(404, "旅行记录不存在")
         return result
 
+    @api.get("/trips/{trip_id}/chat/pending")
+    def pending_chat(trip_id: str):
+        if service.repository.get(trip_id) is None:
+            raise HTTPException(404, "旅行记录不存在")
+        return service.repository.pending_chat(trip_id)
+
     @api.get("/trips/{trip_id}/compare")
     def difference(trip_id: str, from_version: int = Query(ge=1), to_version: int = Query(ge=1)):
         before, after = service.repository.get(trip_id, from_version), service.repository.get(trip_id, to_version)

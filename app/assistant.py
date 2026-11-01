@@ -49,6 +49,33 @@ PROTECTED_CUES = {"origin": r"出发|从", "cities": r"目的地|城市|去|换�
     "people": r"人数|个人|位|人同行|人出行|人去|人玩|带.*(?:孩子|父母|老人)|\d+人",
     "budget": r"预算|费用|花费|元|块|钱", "must_visit": r"必去|一定去|想去|不去|别去|取消|排除",
     "excluded": r"不去|别去|排除|避开|不要去|取消"}
+CONDITION_TOPICS = {"origin": "出发地", "cities": "目的地|城市", "start_date": "日期|出发日期|开始日期",
+    "days": "天数|旅行天数|行程天数", "people": "人数|出行人数|同行人数", "budget": "预算|总费用|总花费",
+    "must_visit": "必去(?:景点|地点)?", "excluded": "排除(?:景点|地点)?", "transport": "交通方式|出行方式",
+    "return_to_origin": "返程|往返", "accessibility_required": "无障碍", "rooms": "房间数",
+    "hotel_per_room_night": "住宿预算|酒店预算|房费", "food_per_person_day": "餐饮预算|餐费",
+    "ticket_per_person_visit": "门票预算|门票费用", "daily_start": "出发时间|活动开始时间",
+    "daily_end": "结束时间|活动结束时间", "visit_minutes": "游览时长", "day_rules": "分日安排",
+    "lodging_addresses": "住宿地址|酒店地址|住处"}
+KEEP_AFTER = r"(?:不变|照旧|保持原样|沿用原(?:有|来|先)(?:安排|设置)?|维持原(?:有|来|先)|(?:不要|别|不用|不能|不再|不)(?:更改|修改|调整|改变|变动|改|换|动))"
+KEEP_BEFORE = r"(?:(?:不要|别|不用|不能|不再|不)(?:更改|修改|调整|改变|变动|改|换|动)|保持|保留|沿用|维持)"
+
+
+def protected_changes(message, changes):
+    """Explicit preservation outranks a model patch, including restore actions."""
+    clauses = [re.sub(r"\s+", "", s) for s in re.split(r"[，,。；;！!？?\n]|但是|但|不过", message) if s.strip()]
+    locked = set()
+    for field, topic in CONDITION_TOPICS.items():
+        if any(re.search(rf"(?:{topic})(?:仍然|仍|还是|都|全部|继续|先|也|要|请|保持|维持|的数值|金额|额度|条件|设置|为原来){{0,3}}(?:(?:在|为|是)?\d+(?:\.\d+)?(?:元|块|人|天|间)?)?{KEEP_AFTER}", s)
+               or re.search(rf"{KEEP_BEFORE}(?:原有|原来|原定|现在|当前|之前|现有|我的|原先|的)?(?:{topic})", s) for s in clauses):
+            locked.add(field)
+    if any(re.search(r"(?:其他|其余)(?:的)?(?:条件|信息|设置|要求|安排)?(?:都|全部|一律)?(?:不变|照旧|保持原样)", s) for s in clauses):
+        mentioned = {field for field, topic in CONDITION_TOPICS.items()
+                     if any("其他" not in s and "其余" not in s and re.search(topic, s) for s in clauses)}
+        if any(re.search(r"第[一二三四五六七八九十两\d]+天|轻松|下午|上午|节奏", s) for s in clauses):
+            mentioned.add("day_rules")
+        locked |= PREFERENCE_FIELDS - mentioned
+    return {k: v for k, v in changes.items() if k not in locked}
 
 
 def planning_reply(trip, changed=False):
@@ -73,6 +100,7 @@ def safe_patch(message, trip, decision):
     changes = {k: v for k, v in decision.changes.items() if k in PREFERENCE_FIELDS}
     if set(decision.changes) - PREFERENCE_FIELDS:
         raise ValueError("我需要先核对相关地点或预约信息，再进行调整。请直接说明想改变的条件。")
+    changes = protected_changes(message, changes)
     raw = trip.constraints.model_dump(mode="json")
     for field, cue in PROTECTED_CUES.items():
         if field in changes and changes[field] != raw[field] and not re.search(cue, message):
@@ -178,9 +206,27 @@ class TourAssistant:
             return None
         if blocked_input(request.message):
             return {"reply": "请只告诉我旅行偏好和条件，证件、银行卡或支付信息不需要提供。", "trip": trip.model_dump(mode="json"), "changed": False}
-        old = repo.begin_chat(trip_id, request.request_id, request.message.strip(), request.base_version)
-        if old:
-            return old
+        turn = repo.begin_chat(trip_id, request.request_id, request.message.strip(), request.base_version,
+                               lease_seconds=self.service.settings.timeout + 30)
+        if "response" in turn:
+            return turn["response"]
+        claim = turn["claim"]
+        try:
+            return await self.handle_claimed(trip, request, turn)
+        finally:
+            # Graceful cancellation releases immediately; a dead process is recovered by lease expiry.
+            repo.release_chat(claim)
+
+    async def handle_claimed(self, trip, request, turn):
+        repo, trip_id, claim = self.service.repository, trip.id, turn["claim"]
+        if turn["result_version"] is not None:
+            committed = repo.get(trip_id, turn["result_version"])
+            response = {"reply": planning_reply(committed, changed=True), "trip": trip.model_dump(mode="json"),
+                        "changed": True, "model_calls": 0}
+            if trip.version != committed.version:
+                response["reply"] = "刚才的修改已经保存，无需再次执行。我已为你加载当前最新安排。"
+            repo.finish_chat(claim, response)
+            return response
         current, reply, calls = trip, "", 0
         try:
             if trip.version != request.base_version:
@@ -193,7 +239,7 @@ class TourAssistant:
                     if re.search(r"已(?:经)?(?:修改|更新|调整|预订|付款|订好|预约成功)", reply):
                         reply = "这次我还没有更改行程。请告诉我具体想调整的条件，我来安排。"
                 elif decision.action == "refresh":
-                    current = await self.service.refresh_visits(trip_id, trip.version)
+                    current = await self.service.refresh_visits(trip_id, trip.version, chat_claim=claim)
                 else:
                     changes = {}
                     if decision.action == "choose":
@@ -215,13 +261,19 @@ class TourAssistant:
                         changes = safe_patch(request.message, trip, decision)
                         if not changes:
                             raise ValueError("请再说具体一点，比如哪天轻松些、想换什么景点，或者新的预算。")
+                    changes = protected_changes(request.message, changes)
+                    if not changes:
+                        raise ValueError("已保留你要求不变的条件。这次没有更改行程，你可以告诉我具体想调整哪一天或哪些活动。")
                     remaining_calls = self.service.settings.max_model_calls - calls
                     if remaining_calls < 1:
                         raise ValueError("本次查询额度已用完，已有安排已保留。稍后再告诉我这条需求，我继续处理。")
                     current = await self.service.revise(trip_id, RevisionRequest(base_version=trip.version, changes=changes,
-                        target_day=decision.target_day, target_period=decision.target_period, autonomous=True), model_budget=remaining_calls)
+                        target_day=decision.target_day, target_period=decision.target_period, autonomous=True), model_budget=remaining_calls, chat_claim=claim)
                 if not reply:
                     reply = planning_reply(current, changed=current.version != trip.version)
+        except asyncio.CancelledError:
+            repo.release_chat(claim)
+            raise
         except (ValueError, ValidationError, VersionConflict) as exc:
             current = repo.get(trip_id)
             reply = str(exc) if not isinstance(exc, ValidationError) else "这些条件还有冲突，请确认日期、人数和预算，我来继续协调。"
@@ -233,5 +285,5 @@ class TourAssistant:
             reply = "这次处理没有完成，已有安排已保留，请稍后重试。"
         response = {"reply": reply, "trip": current.model_dump(mode="json"), "changed": current.version != trip.version,
                     "model_calls": calls + (current.metrics.model_calls if current.version != trip.version else 0)}
-        repo.finish_chat(trip_id, request.request_id, response)
+        repo.finish_chat(claim, response)
         return response

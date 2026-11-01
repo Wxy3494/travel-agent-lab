@@ -2,6 +2,7 @@
 
 Used at the service boundary AND by evaluations; failure never becomes ready.
 """
+from collections import Counter
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from math import ceil
@@ -22,6 +23,7 @@ def audit_result(result):
         problems.add("city_order")
     known = {e.id for e in result.evidence}
     names, pids, home_legs = set(), [], []
+    expected_rows = Counter()
     for day in days:
         if day.date != c.start_date + timedelta(days=day.day - 1):
             problems.add("date_sequence")
@@ -33,6 +35,7 @@ def audit_result(result):
                 problems.add("source_missing")
             quantity = ceil(c.people / 4) if c.transport == "driving" else c.people
             title = ("去程交通：" if transfer.direction == "outbound" else "返程交通：") + f"{transfer.from_city} → {transfer.to_city}"
+            expected_rows[(day.day, None, title)] += 1
             rows = [i for i in result.budget.items if i.day == day.day and i.category == title] if result.budget else []
             if (len(rows) != 1 or rows[0].event_start is not None or rows[0].quantity != quantity
                     or rows[0].evidence_id not in transfer.evidence_ids):
@@ -81,6 +84,16 @@ def audit_result(result):
                 problems.add("activity_time")
             if not event.evidence_ids or not set(event.evidence_ids) <= known:
                 problems.add("source_missing")
+            if event.kind in {"travel", "visit"}:
+                category = event.title + (" 门票" if event.kind == "visit" else "")
+                expected_rows[(day.day, event.start, category)] += 1
+                rows = [i for i in result.budget.items if (i.day, i.event_start, i.category) == (day.day, event.start, category)] if result.budget else []
+                quantity = ceil(c.people / 4) if event.kind == "travel" and c.transport == "driving" else c.people
+                unit = "人次" if event.kind == "visit" else "车" if c.transport == "driving" else "人"
+                if (len(rows) != 1 or rows[0].quantity != quantity or rows[0].unit != unit
+                        or rows[0].evidence_id not in event.evidence_ids
+                        or any(abs(Decimal(str(getattr(rows[0].total, bound))) - Decimal(str(getattr(event.cost, bound)))) > Decimal("0.005") for bound in ("low", "high"))):
+                    problems.add("event_budget")
             if event.kind == "visit":
                 names.add(event.title)
                 pids.append(event.place_id)
@@ -131,7 +144,7 @@ def audit_result(result):
                 duration = rule.visit_minutes if rule and rule.visit_minutes and (rule.period == "day" or event.start >= "13:00") else c.visit_minutes
                 if start is not None and end is not None and end - start != duration:
                     problems.add("visit_duration")
-        if day.travel_minutes != travel_total and day.travel_minutes:
+        if day.travel_minutes != travel_total:
             problems.add("travel_minutes")
         if any(h.evidence_id not in known for h in day.hotel_options):
             problems.add("source_missing")
@@ -158,6 +171,9 @@ def audit_result(result):
     if b is None:
         problems.add("budget_missing")
     else:
+        expected_rows.update({(None, None, "住宿"): 1, (None, None, "餐饮"): 1})
+        if Counter((i.day, i.event_start, i.category) for i in b.items) != expected_rows:
+            problems.add("budget_coverage")
         for item in b.items:
             if item.evidence_id not in known:
                 problems.add("source_missing")

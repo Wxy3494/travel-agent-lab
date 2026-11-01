@@ -68,6 +68,12 @@ def record(evidence_dir):
     for probe in (assistant, photos):
         if probe and not probe.get("passed"):
             raise ValueError("Current assistant/photo live probe did not pass")
+    regression_path = evidence_dir / "fault-regressions.json"
+    regressions = json.loads(regression_path.read_text(encoding="utf-8")) if regression_path.is_file() else None
+    if regressions and not regressions.get("passed"):
+        raise ValueError("Fault injection regressions did not pass")
+    round_notes = ("本轮修复：显式保留预算等条件优先于模型错误补丁；聊天增加任务状态、超时租约、旧执行者隔离和与行程同事务的结果回执，取消及崩溃后可恢复且不重复保存；费用审计从全部交通/游览活动反查账目，检查漏项、重复、归属、人数、金额与来源；交通时长包括零值均强制比较。详见 [第二轮评审修复](SECOND_REVIEW_FIXES.md)。"
+                   if regressions else "本轮调整：删除面向客户的手动方案、版本、酒店/车站、分日和预约操作面板，统一由“旅游助手”接收意见、回答咨询并执行核验后的修改；对话持久保存并防止重复发送重复修改。自主模式自动选择已查询住宿位置参与算路，景点和住宿下方展示对应地点的实景照片。详见 [旅游助手与照片](TOUR_ASSISTANT.md)。")
     snapshot = {"checked_at": datetime.now(ZoneInfo("Asia/Shanghai")).isoformat(),
         "pytest": {**counts, "report_sha256": digest(evidence_dir / "pytest.xml")},
         "ruff": "passed", "pip_check": "passed", "offline": evaluations,
@@ -92,6 +98,7 @@ def record(evidence_dir):
             "report_sha256": digest(assistant_path)} if assistant else None,
         "photos_live_probe": {"passed": True, "scope": photos["scope"],
             "report_sha256": digest(photos_path)} if photos else None,
+        "fault_regressions": {**regressions, "report_sha256": digest(regression_path)} if regressions else None,
         "delivery": {"type": "source_only_using_existing_dependencies", "fresh_machine_install": "not_run",
                      "license": "not_selected", "published": False},
         "docker_runtime": "not_run", "cloud_ci": "not_run", "independent_learning": "not_evaluated",
@@ -120,7 +127,7 @@ def record(evidence_dir):
 | Docker、云端 CI | 本轮未运行 | 配置不等于运行证据 |
 | Git 与外发 | 本地基线和修复提交；ZIP 清单记录最终提交与各文件 SHA256 | 无外部推送；未选开源许可证；不能伪称已有远端历史或云端 CI 成绩 |
 
-本轮调整：删除面向客户的手动方案、版本、酒店/车站、分日和预约操作面板，统一由“旅游助手”接收意见、回答咨询并执行核验后的修改；对话持久保存并防止重复发送重复修改。自主模式自动选择已查询住宿位置参与算路，景点和住宿下方展示对应地点的实景照片。详见 [旅游助手与照片](TOUR_ASSISTANT.md)。此前表单、历史、分店、步行导航、往返交通及景点核验继续纳入完整回归。
+{round_notes} 此前表单、历史、分店、步行导航、往返交通及景点核验继续纳入完整回归。
 
 {'浏览器检查使用独立 Chrome、演示 API 和数据库；照片使用另行真实取得的对应地点缓存作视觉验收，不代表真实路线验收。' if browser else '本轮没有浏览器截图验收。'}
 

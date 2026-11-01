@@ -24,6 +24,8 @@ AUDIT_MESSAGES = {
     "excluded_place": "行程包含了你要求排除的地点",
     "budget_missing": "行程还没有完整的预算明细",
     "budget_arithmetic": "费用明细与合计金额不一致，请重新计算",
+    "event_budget": "部分活动缺少对应费用，或费用与人数、活动安排不一致，请重新计算",
+    "budget_coverage": "费用明细有遗漏、重复或不属于当前行程的项目，请重新计算",
     "party_quantities": "住宿晚数、房间数或餐饮人数计算不一致",
     "budget_status": "预算判断与费用合计不一致",
     "over_budget": "预计费用已经超过总预算",

@@ -60,6 +60,23 @@ def test_admission_questions_use_assistant_without_manual_panel(ui):
     assert ui.session_state.trip["metrics"]["model_calls"] == 0
 
 
+def test_reopened_page_recovers_interrupted_chat_with_original_request_id(ui, service):
+    from uuid import uuid4
+    fill_example(ui)
+    submit_form(ui)
+    trip = ui.session_state.trip
+    turn = service.repository.begin_chat(trip["id"], uuid4().hex, "预算改成3000元", trip["version"])
+    service.repository.release_chat(turn["claim"])
+    ui.run()
+    assert not ui.exception
+    assert ui.session_state.pending_chat["request_id"] == turn["claim"][1]
+    ui.button(key="retry_chat").click().run()
+    assert not ui.exception and ui.session_state.trip["version"] == 2
+    assert ui.session_state.trip["constraints"]["budget"] == 3000
+    assert len(service.repository.messages(trip["id"])) == 2
+    assert service.repository.pending_chat(trip["id"]) is None
+
+
 def test_blank_form_marks_each_missing_field_without_a_generic_warning(ui):
     submit_form(ui)
     assert ui.session_state.trip is None
