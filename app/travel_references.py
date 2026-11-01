@@ -19,10 +19,10 @@ def targets_for(trip, selection=None, facts=None):
         if selection:
             places = [p for p in facts[day.city].places if p.id in day.place_ids]
             visits = [(p.id, p.name) for p in places]
-            hotels = facts[day.city].hotels[:3]
+            hotels = [facts[day.city].lodging] if facts[day.city].lodging else facts[day.city].hotels[:3]
         else:
             visits = [(e.place_id, e.title) for e in day.events if e.kind == "visit"]
-            hotels = day.hotel_options
+            hotels = [day.suggested_stay] if day.suggested_stay else day.hotel_options
         for pid, name in visits:
             targets.setdefault(("attraction", pid), {"place_id": pid, "name": name, "city": day.city,
                 "kind": "attraction", "dates": []})["dates"].append(when)

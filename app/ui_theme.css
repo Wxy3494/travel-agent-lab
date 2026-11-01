@@ -301,6 +301,12 @@
   font-size: 11px;
 }
 
+.place-gallery { display: flex; gap: 10px; margin: 10px 0 18px; max-width: 760px; }
+.place-gallery img { width: min(48%, 360px); flex: 1 1 0; min-width: 0; height: 180px; object-fit: cover;
+  border-radius: 12px; border: 1px solid #30465c; }
+.place-gallery img:only-child { max-width: 560px; width: 100%; height: 220px; }
+.st-key-tour_assistant { margin-top: 24px; padding-top: 6px; }
+
 @media (max-width: 760px) {
   .block-container { padding-left: 1rem; padding-right: 1rem; }
   .travel-mode { display: none; }

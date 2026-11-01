@@ -46,21 +46,17 @@ def fill_example(ui):
     ui.text_input(key="form_interests").set_value("博物馆，公园")
 
 
-def test_admission_details_confirmation_and_refresh(ui):
+def test_admission_questions_use_assistant_without_manual_panel(ui):
     fill_example(ui)
     submit_form(ui)
     trip = ui.session_state.trip
-    ui.selectbox(key="visit_check_choice").set_value(trip["visit_checks"][0]).run()
-    assert not ui.exception
-    next(b for b in ui.button if b.label == "保存预约确认并重新检查").click().run()
+    ui.chat_input(key="assistant_input").set_value("需要预约吗？").run()
+    assert not ui.exception and ui.chat_message
     assert ui.session_state.trip["version"] == 1
-    assert any("先完成实际预约" in w.value for w in ui.warning)
-    next(c for c in ui.checkbox if c.label.startswith("我已完成")).check()
-    next(b for b in ui.button if b.label == "保存预约确认并重新检查").click().run()
+    assert not ui.session_state.trip["constraints"]["reservations"]
+    ui.chat_input(key="assistant_input").set_value("重新核验景点入场信息").run()
     assert not ui.exception and ui.session_state.trip["version"] == 2
-    assert ui.session_state.trip["constraints"]["reservations"][0]["people"] == 2
-    next(b for b in ui.button if b.label == "重新核验景点入场信息").click().run()
-    assert not ui.exception and ui.session_state.trip["version"] == 3
+    assert ui.session_state.trip["id"] == trip["id"]
     assert ui.session_state.trip["metrics"]["model_calls"] == 0
 
 
@@ -146,6 +142,9 @@ def test_thirty_day_form_hotels_and_automatic_weather(ui):
     assert not any(b.label == "查询天气" for b in ui.button)
     assert not any(t.key == "weather_city" for t in ui.text_input)
     assert any("天气 · 广州" in item.value for item in ui.markdown)
+    trip = ui.session_state.trip
+    ui.session_state[f"day_{trip['id']}_{trip['version']}_30"] = True
+    ui.run()
     assert any("临近出发" in item.value for item in ui.markdown)
 
 
@@ -154,8 +153,7 @@ def test_form_and_text_revisions_keep_state_and_versions(ui, service):
     submit_form(ui)
     original = ui.session_state.trip
     assert original["status"] == "ready" and original["version"] == 1
-    ui.text_area(key="revision_instruction").set_value("预算改成1元")
-    next(b for b in ui.button if b.label == "提交修改").click().run()
+    ui.chat_input(key="assistant_input").set_value("预算改成1元").run()
     assert not ui.exception
     low = ui.session_state.trip
     assert low["version"] == 2 and low["status"] == "needs_review"
@@ -214,14 +212,13 @@ def test_candidate_confirmation_in_page_produces_verified_version(ui):
     pending = ui.session_state.trip
     assert pending["status"] == "needs_input" and pending["clarifications"][0]["options"]
     point = pending["clarifications"][0]["options"][0]
-    ui.selectbox(key="confirm_must_visit:博物").set_value(point)
-    next(b for b in ui.button if b.label == "确认地点并继续规划").click().run()
+    ui.chat_input(key="assistant_input").set_value("选第一个").run()
     assert not ui.exception
     assert ui.session_state.trip["status"] == "ready" and ui.session_state.trip["version"] == 2
     assert ui.session_state.trip["constraints"]["bindings"][0]["place_id"] == point["id"]
 
 
-def test_history_picker_restores_without_uuid_and_clone_preserves_original(ui, service):
+def test_history_picker_restores_without_uuid_and_original_versions_remain(ui, service):
     fill_example(ui)
     submit_form(ui)
     old = ui.session_state.trip
@@ -232,9 +229,8 @@ def test_history_picker_restores_without_uuid_and_clone_preserves_original(ui, s
     next(s for s in ui.selectbox if s.label == "选择旅行").set_value(entries[0]).run()
     next(b for b in ui.button if b.label == "打开选中旅行").click().run()
     assert not ui.exception and ui.session_state.trip["id"] == old["id"]
-    next(b for b in ui.button if b.label == "从当前版本复制为新旅行").click().run()
-    assert not ui.exception
-    assert ui.session_state.trip["id"] != old["id"] and service.repository.get(old["id"]).version == 1
+    assert service.repository.get(old["id"]).version == 1
+    assert not any(e.label == "版本、对比与恢复" for e in ui.expander)
 
 
 async def test_recent_five_all_history_search_and_older_page_without_debug_controls(ui, service):
@@ -292,7 +288,7 @@ def test_advanced_time_form_and_adjustment_apply_work(ui):
     assert old["status"] == "needs_review"
     assert all(e["start"] >= "11:00" for e in old["days"][0]["events"])
     assert all(e["end"] <= "19:00" for d in old["days"] for e in d["events"] if e["kind"] == "visit")
-    ui.button(key="adjust_increase_budget").click().run()
+    ui.chat_input(key="assistant_input").set_value("预算改成6000元").run()
     assert not ui.exception
     assert ui.session_state.trip["status"] == "ready" and ui.session_state.trip["version"] == 2
     assert ui.time_input(key="form_daily_start").value == time(11)

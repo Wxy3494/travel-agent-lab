@@ -1,6 +1,7 @@
 import asyncio
 import re
 import time
+from dataclasses import replace
 from datetime import datetime
 from uuid import uuid4
 from zoneinfo import ZoneInfo
@@ -53,7 +54,7 @@ class TravelService:
     async def create(self, request):
         return await self.execute(request, str(uuid4()), 1, 0)
 
-    async def revise(self, trip_id, revision):
+    async def revise(self, trip_id, revision, model_budget=None):
         previous = self.repository.get(trip_id)
         if previous is None:
             return None
@@ -65,11 +66,11 @@ class TravelService:
                 raise ValueError("调整方案已失效或与其他修改冲突，请读取最新版本")
             revision.changes = adjustment.changes
         updated = Constraints.model_validate({**previous.constraints.model_dump(mode="json"), **revision.changes})
-        request = TripRequest(prompt=revision.instruction, constraints=updated, strategy=previous.strategy)
+        request = TripRequest(prompt=revision.instruction, constraints=updated, strategy=previous.strategy, autonomous=revision.autonomous)
         refresh_only = bool(revision.changes) and set(revision.changes) <= {"reservations", "opening_rules"} and not revision.instruction
         return await self.execute(request, trip_id, previous.version + 1, previous.version,
                                   is_revision=True, explicit_changes=revision.changes, previous=previous, revision=revision,
-                                  saved_selection=self.saved_selection(previous) if refresh_only else None)
+                                  saved_selection=self.saved_selection(previous) if refresh_only else None, model_budget=model_budget)
 
     def saved_selection(self, previous):
         if previous.constraints.missing() or not previous.days:
@@ -95,7 +96,7 @@ class TravelService:
             is_revision=True, previous=previous, saved_selection=self.saved_selection(previous))
 
     async def execute(self, request, trip_id, version, expected, is_revision=False, explicit_changes=None,
-                      previous=None, revision=None, saved_selection=None):
+                      previous=None, revision=None, saved_selection=None, model_budget=None):
         start = time.perf_counter()
         result = TripResult(id=trip_id, version=version, mode=self.settings.mode,
                             strategy=request.strategy, status="failed", constraints=request.constraints)
@@ -106,8 +107,9 @@ class TravelService:
                 result.issues = [Issue(code="unsupported_action", message="系统只提供规划，不能代为交易或保存身份证、银行卡和密码；请删除敏感信息")]
             else:
                 async with asyncio.timeout(self.settings.timeout):
+                    agent_settings = replace(self.settings, max_model_calls=model_budget) if model_budget is not None else self.settings
                     agents = (AdmissionRefreshAgents(saved_selection, result.trace) if saved_selection is not None else
-                              self.agents_factory(self.settings, result.trace))
+                              self.agents_factory(agent_settings, result.trace))
                     try:
                         c = await agents.extract(request.prompt, request.constraints, revision=is_revision)
                         if is_revision and explicit_changes:
@@ -210,6 +212,8 @@ class TravelService:
                             selection = await agents.select(c, facts, feedback)
                             selection = apply_day_choices(selection, c, previous, reuse_days, afternoon_day)
                             if attempt == 0:
+                                if request.autonomous:
+                                    recommend_stays(c, selection, facts)
                                 remaining = self.settings.timeout - (time.perf_counter() - start) - 10
                                 if self.settings.meituan_enabled and self.settings.mode == "live" and provider.calls >= self.settings.max_tool_calls:
                                     result.travel_info = TravelInfo(status="unavailable", message="本次资料查询额度已用完，未追加美团查询。")
@@ -251,10 +255,16 @@ class TravelService:
                             fingerprint = tuple((i.code, i.message) for i in errors)
                             terminal = {"over_budget", "uncertain", "accessibility_unverified", "day_too_long", "time_window",
                                 "admission_unverified", "ticket_unverified", "reservation_required", "reservation_window", "opening_conflict"}
+                            if request.autonomous:
+                                terminal -= {"day_too_long", "time_window"}
+                                fixed_minimum = c.hotel_per_room_night.low * (c.rooms or (c.people + 1) // 2) * max(0, c.days - 1)
+                                fixed_minimum += c.food_per_person_day.low * c.people * c.days
+                                if fixed_minimum <= c.budget:
+                                    terminal -= {"over_budget", "uncertain"}
                             codes = {i.code.removeprefix("audit_") for i in errors}
                             time_failure = bool(codes & {"time_window", "day_too_long"})
                             admission_failure = bool(codes & {"admission_unverified", "ticket_unverified", "reservation_required", "reservation_window", "opening_conflict"})
-                            if (codes <= terminal or (time_failure or admission_failure) and codes <= terminal | {"missing_must_visit"}
+                            if (codes <= terminal or ((time_failure and not request.autonomous) or admission_failure) and codes <= terminal | {"missing_must_visit"}
                                     or fingerprint == last_errors):
                                 break
                             last_errors = fingerprint
@@ -361,4 +371,21 @@ def apply_day_choices(selection, c, previous, reuse, afternoon_day):
             d = d.model_copy(update={"place_ids": ids})
         days.append(d)
     return Selection(days=days)
+
+
+def recommend_stays(c, selection, facts):
+    """Pick one queried hotel near planned visits, preserving explicit lodging."""
+    for city in c.cities:
+        data = facts[city]
+        if data.lodging or c.anchors.get(city) and c.anchors[city].hotel_id or not data.hotels:
+            continue
+        ids = {pid for day in selection.days if day.city == city for pid in day.place_ids}
+        points = [p for p in data.places if p.id in ids]
+        locations = [tuple(map(float, p.location.split(","))) for p in points] or [tuple(map(float, data.location.split(",")))]
+        lon = sum(p[0] for p in locations) / len(locations)
+        lat = sum(p[1] for p in locations) / len(locations)
+        def score(point, lon=lon, lat=lat):
+            x, y = map(float, point.location.split(","))
+            return (x - lon) ** 2 + (y - lat) ** 2, point.id
+        data.lodging = min(data.hotels, key=score)
 

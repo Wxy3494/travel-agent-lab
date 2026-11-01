@@ -8,6 +8,7 @@ from datetime import timedelta
 import httpx
 
 from app.navigation import walking_step
+from app.photos import poi_photos
 from app.schemas import CityFacts, Constraints, Evidence, Place, PriceRange
 
 
@@ -250,10 +251,11 @@ class AmapProvider(Provider):
             for p in data.get("pois", []):
                 if self.valid_poi(p, g):
                     found[p["id"]] = Place(id=p["id"], name=p["name"], city=city, location=p["location"],
-                                            evidence_id=ev, address=p.get("address") if isinstance(p.get("address"), str) else "")
+                                            evidence_id=ev, address=p.get("address") if isinstance(p.get("address"), str) else "", photos=poi_photos(p))
         hotels_data = await self.get("/v3/place/text", {"keywords": "酒店", "city": g["adcode"],
                                                         "citylimit": "true", "offset": "3", "page": "1", "extensions": "all"})
-        hotels = [Place(id=p["id"], name=p["name"], city=city, location=p["location"], evidence_id=ev, category="hotel")
+        hotels = [Place(id=p["id"], name=p["name"], city=city, location=p["location"], evidence_id=ev, category="hotel",
+                        address=p.get("address") if isinstance(p.get("address"), str) else "", photos=poi_photos(p))
                   for p in hotels_data.get("pois", []) if self.valid_poi(p, g)]
         weather, evidence_ids = [], [ev]
         try:
@@ -293,7 +295,7 @@ class AmapProvider(Provider):
         ev = self.record("live", "高德POI候选查询", f"{city} / {query} / {category}；按行政区校验归属",
                          "https://developer.amap.com/api/webservice/guide/api-advanced/search")
         return [Place(id=p["id"], name=p["name"], city=city, location=p["location"], evidence_id=ev,
-                      category=category, address=p.get("address") if isinstance(p.get("address"), str) else "")
+                      category=category, address=p.get("address") if isinstance(p.get("address"), str) else "", photos=poi_photos(p))
                 for p in data.get("pois", []) if self.valid_poi(p, g)]
 
     async def by_id(self, city, pid, constraints, category):
@@ -306,7 +308,7 @@ class AmapProvider(Provider):
             if p.get("id") == pid and self.valid_poi(p, g) and (not prefixes[category] or
                     str(p.get("typecode", "")).startswith(prefixes[category])):
                 return Place(id=pid, name=p["name"], city=city, location=p["location"], category=category,
-                             evidence_id=ev, address=p.get("address") if isinstance(p.get("address"), str) else "")
+                             evidence_id=ev, address=p.get("address") if isinstance(p.get("address"), str) else "", photos=poi_photos(p))
         return None
 
     async def lodging(self, city, query, constraints):

@@ -1,6 +1,7 @@
 import json
 import sqlite3
 from contextlib import contextmanager
+from datetime import UTC, datetime
 from pathlib import Path
 
 from app.schemas import TripResult
@@ -25,6 +26,11 @@ class Repository:
                 for payload, sequence in rows.fetchall():
                     self.index(db, json.loads(payload), sequence)
                 db.execute("PRAGMA user_version = 2")
+            db.execute("CREATE TABLE IF NOT EXISTS assistant_messages (id INTEGER PRIMARY KEY, trip_id TEXT NOT NULL, "
+                       "role TEXT NOT NULL, content TEXT NOT NULL, created_at TEXT NOT NULL, version INTEGER NOT NULL)")
+            db.execute("CREATE TABLE IF NOT EXISTS assistant_turns (trip_id TEXT NOT NULL, request_id TEXT NOT NULL, "
+                       "message TEXT NOT NULL, base_version INTEGER NOT NULL, response TEXT, PRIMARY KEY(trip_id,request_id))")
+            db.execute("PRAGMA user_version = 3")
 
     @staticmethod
     def index(db, result, sequence):
@@ -79,3 +85,32 @@ class Repository:
         results = [TripResult.model_validate_json(row[0]) for row in rows]
         return [{"version": r.version, "created_at": r.created_at, "status": r.status,
                  "budget": r.budget.total.model_dump() if r.budget else None} for r in results]
+
+    def messages(self, trip_id, limit=100):
+        with self.connect() as db:
+            rows = db.execute("SELECT role,content,created_at,version FROM assistant_messages WHERE trip_id=? "
+                              "ORDER BY id DESC LIMIT ?", (trip_id, limit)).fetchall()
+        return [dict(zip(("role", "content", "created_at", "version"), row, strict=True)) for row in reversed(rows)]
+
+    def begin_chat(self, trip_id, request_id, message, version):
+        with self.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            old = db.execute("SELECT message,base_version,response FROM assistant_turns WHERE trip_id=? AND request_id=?",
+                             (trip_id, request_id)).fetchone()
+            if old:
+                if old[:2] != (message, version):
+                    raise VersionConflict("这次发送标记已用于其他内容，请重新发送。")
+                if old[2]:
+                    return json.loads(old[2])
+                raise VersionConflict("这条消息正在处理中，请稍后查看回复。")
+            db.execute("INSERT INTO assistant_turns VALUES(?,?,?,?,NULL)", (trip_id, request_id, message, version))
+            db.execute("INSERT INTO assistant_messages(trip_id,role,content,created_at,version) VALUES(?,?,?,?,?)",
+                       (trip_id, "user", message, datetime.now(UTC).isoformat(), version))
+        return None
+
+    def finish_chat(self, trip_id, request_id, response):
+        with self.connect() as db:
+            db.execute("INSERT INTO assistant_messages(trip_id,role,content,created_at,version) VALUES(?,?,?,?,?)",
+                       (trip_id, "assistant", response["reply"], datetime.now(UTC).isoformat(), response["trip"]["version"]))
+            db.execute("UPDATE assistant_turns SET response=? WHERE trip_id=? AND request_id=?",
+                       (json.dumps(response, ensure_ascii=False), trip_id, request_id))

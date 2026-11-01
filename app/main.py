@@ -5,6 +5,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, PlainTextResponse
 from pydantic import ValidationError
 
+from app.assistant import AssistantRequest, TourAssistant
 from app.config import Settings
 from app.history import compare
 from app.schemas import CloneRequest, Constraints, RevisionRequest, TripRequest, TripResult
@@ -18,6 +19,7 @@ def create_app(settings=None, service=None):
     service = service or TravelService(settings, Repository(settings.db_path))
     api = FastAPI(title="Travel Agent Lab", version="0.1.0", description="市内与跨城规划；所有金额为人民币全团估算")
     api.state.service = service
+    api.state.tour_assistant = TourAssistant(service)
 
     @api.exception_handler(RequestValidationError)
     async def validation_error(request, exc):
@@ -76,12 +78,44 @@ def create_app(settings=None, service=None):
         finally:
             await provider.close()
 
+    @api.get("/places/photos")
+    async def place_photos(city: str = Query(min_length=1, max_length=60), place_id: str = Query(min_length=1, max_length=100),
+                           category: str = Query(default="attraction", pattern="^(attraction|hotel)$")):
+        from app.photos import photo_url
+        from app.providers import ProviderError
+        if service.settings.mode == "demo":
+            return {"photos": []}
+        provider = service.provider_factory()
+        try:
+            point = await provider.by_id(city, place_id, Constraints(cities=[city], origin=city), category)
+            return {"photos": [url for raw in point.photos if (url := photo_url(raw))]} if point else {"photos": []}
+        except ProviderError:
+            return {"photos": []}
+        finally:
+            await provider.close()
+
     @api.get("/trips/{trip_id}/versions")
     def versions(trip_id: str):
         values = service.repository.versions(trip_id)
         if not values:
             raise HTTPException(404, "行程不存在")
         return values
+
+    @api.get("/trips/{trip_id}/messages")
+    def assistant_messages(trip_id: str):
+        if not service.repository.get(trip_id):
+            raise HTTPException(404, "旅行记录不存在")
+        return service.repository.messages(trip_id)
+
+    @api.post("/trips/{trip_id}/chat")
+    async def chat(trip_id: str, request: AssistantRequest):
+        try:
+            result = await api.state.tour_assistant.handle(trip_id, request)
+        except VersionConflict as exc:
+            raise HTTPException(409, str(exc)) from None
+        if result is None:
+            raise HTTPException(404, "旅行记录不存在")
+        return result
 
     @api.get("/trips/{trip_id}/compare")
     def difference(trip_id: str, from_version: int = Query(ge=1), to_version: int = Query(ge=1)):

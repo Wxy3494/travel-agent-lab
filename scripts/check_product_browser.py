@@ -69,7 +69,8 @@ def check():
                 page.get_by_test_id("stSidebar").screenshot(path=str(out / "recent-history.png"))
                 report["checks"].append("five latest readable history buttons; no ID, strategy or JSON controls")
                 first_day = page.get_by_test_id("stExpander").filter(has=page.locator("summary", has_text="第 1 天"))
-                first_day.locator("summary").click()
+                if first_day.locator("details").get_attribute("open") is None:
+                    first_day.locator("summary").click()
                 expect(first_day.get_by_text("演示入场参考", exact=False)).to_be_visible()
                 expect(first_day.get_by_text("演示标准间", exact=False)).to_be_visible()
                 expect(first_day.get_by_text("步行共 1694 米", exact=False)).to_be_visible()

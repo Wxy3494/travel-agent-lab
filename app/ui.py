@@ -1,6 +1,7 @@
 """Form-first travel planning with optional text revisions."""
 import base64
 import os
+import uuid
 from collections import Counter
 from datetime import date, datetime, time
 from pathlib import Path
@@ -11,9 +12,11 @@ import httpx
 import streamlit as st
 from dotenv import load_dotenv
 
+from app.assistant import planning_reply
 from app.config import client_read_timeout
 from app.form_validation import FORM_DEFAULTS, validate_form
 from app.navigation import route_lines
+from app.photos import fetch_photo, gallery_html
 from app.presentation import (
     admission_summary,
     day_description,
@@ -24,7 +27,6 @@ from app.presentation import (
 )
 from app.render import escape, render_markdown
 from app.schemas import MAX_TRIP_DAYS, TripResult
-from app.service import blocked_input
 from app.travel_references import matching_reference, reference_body, references_for
 
 load_dotenv()
@@ -139,6 +141,68 @@ def show_route(value):
         st.markdown(escape(plain_text(line["text"])) + (" · " + " · ".join(links) if links else ""))
 
 
+@st.cache_data(ttl=21600, max_entries=128, show_spinner=False)
+def cached_photo(url):
+    return fetch_photo(url)
+
+
+@st.cache_data(ttl=21600, max_entries=256, show_spinner=False)
+def lookup_photos(api_url, city, pid, category):
+    try:
+        result = httpx.request("GET", api_url + f"/places/photos?city={quote(city, safe='')}&place_id={quote(pid, safe='')}&category={category}", timeout=8)
+        result.raise_for_status()
+        return result.json().get("photos", [])
+    except (httpx.HTTPError, ValueError, AttributeError):
+        return []
+
+
+def show_photos(name, city, pid, photos, category, mode):
+    urls = photos or (lookup_photos(API, city, pid, category) if mode == "live" and pid else [])
+    pictures = []
+    for url in urls[:4]:
+        picture = cached_photo(url)
+        if picture:
+            pictures.append(picture)
+        if len(pictures) == 2:
+            break
+    markup = gallery_html(name, pictures)
+    if markup:
+        st.markdown(markup, unsafe_allow_html=True)
+
+
+def show_assistant(trip):
+    if st.session_state.get("pending_chat", {}).get("trip_id", trip["id"]) != trip["id"]:
+        st.session_state.pop("pending_chat", None)
+    with st.container(key="tour_assistant", border=True):
+        st.subheader("旅游助手")
+        st.caption("说说你的想法，我来协调路线、景点和住宿。")
+        messages = request("GET", f"/trips/{trip['id']}/messages") or []
+        if not messages:
+            with st.chat_message("assistant"):
+                st.write(planning_reply(TripResult.model_validate(trip)))
+        for message in messages:
+            with st.chat_message(message["role"]):
+                st.write(message["content"])
+        message = st.chat_input("例如：第二天轻松一点，想多留些时间吃当地美食", key="assistant_input", max_chars=3000)
+        if message:
+            st.session_state.pending_chat = {"trip_id": trip["id"], "base_version": trip["version"],
+                "message": message, "request_id": uuid.uuid4().hex}
+        pending = st.session_state.get("pending_chat")
+        retry = bool(pending) and st.button("重新发送刚才的消息", key="retry_chat") if not message else False
+        if (message or retry) and pending:
+            with st.chat_message("user"):
+                st.write(pending["message"])
+            with st.chat_message("assistant"), st.spinner("我正在查看并安排…"):
+                response = request("POST", f"/trips/{pending['trip_id']}/chat",
+                    {k: v for k, v in pending.items() if k != "trip_id"})
+            if response:
+                st.session_state.trip = response["trip"]
+                if response.get("changed"):
+                    st.session_state.sync_form = response["trip"]["constraints"]
+                st.session_state.pop("pending_chat", None)
+                st.rerun()
+
+
 def show_trip(trip, latest):
     labels = {"ready": "方案已生成", "needs_review": "行程还需要调整", "needs_input": "还需要补充一些信息",
               "blocked": "这项请求无法执行", "failed": "这次规划未完成"}
@@ -189,7 +253,11 @@ def show_trip(trip, latest):
         if nights:
             st.caption("住宿：" + " · ".join(f"{city}{count}晚" for city, count in nights.items()))
         for day in trip["days"]:
-            with st.expander(f"第 {day['day']} 天 · {day['date']} · {day['city']}", expanded=False):
+            panel = st.expander(f"第 {day['day']} 天 · {day['date']} · {day['city']}", expanded=day["day"] == 1,
+                key=f"day_{trip['id']}_{trip['version']}_{day['day']}", on_change="rerun")
+            if not panel.open:
+                continue
+            with panel:
                 for weather in day.get("weather_details", []):
                     st.markdown("**天气 · " + escape(weather_line(weather)) + "**")
                 if day.get("departure_note"):
@@ -208,6 +276,8 @@ def show_trip(trip, latest):
                     st.markdown(f"**{e['start']}–{e['end']}**　{title}")
                     if e["kind"] in {"travel", "visit"}:
                         st.caption(f"全团费用约 ¥{e['cost']['low']:.0f}–{e['cost']['high']:.0f}")
+                    if e["kind"] == "visit":
+                        show_photos(e["title"], e["city"], e.get("place_id"), e.get("photos", []), "attraction", trip["mode"])
                     check = next((v for v in trip.get("visit_checks", []) if v["place_id"] == e.get("place_id") and v["on_date"] == day["date"]), None)
                     if check:
                         st.caption("入场核验：" + admission_summary(check, c))
@@ -223,12 +293,13 @@ def show_trip(trip, latest):
                 st.write(f"备选：{plain_text(day['alternative'])}")
                 if day["overnight_city"]:
                     st.write(f"当晚住在{day['overnight_city']}；填写的住处用于计算路程，未填写时按住宿区域估算。以下酒店仅供参考，房价和房源需另行确认。")
-                    for h in day["hotel_options"]:
+                    for h in [day["suggested_stay"]] if day.get("suggested_stay") else day["hotel_options"][:1]:
                         ref = matching_reference(refs, h["id"], day["date"])
                         hotel = hotel_details(h, c, day["date"], ref, bool(trip.get("travel_info", {}) and trip["travel_info"].get("queried_hotels")))
                         st.markdown(f"**{escape(hotel['name'])}** · [查看地图]({hotel['map_url']}) · [搜索房价]({hotel['search_url']})")
                         if h.get("address"):
                             st.caption("地址：" + h["address"])
+                        show_photos(h["name"], h["city"], h["id"], h.get("photos", []), "hotel", trip["mode"])
                         st.caption(hotel["budget_label"])
                         st.caption(hotel["price_note"])
                         if ref:
@@ -252,7 +323,7 @@ def show_trip(trip, latest):
         st.download_button("下载行程文档", render_markdown(TripResult.model_validate(trip)),
             file_name=f"trip-{trip['id']}-v{trip['version']}.md", mime="text/markdown",
             key=f"download-{trip['id']}-{trip['version']}")
-        st.caption("修改上方表单或在下方输入修改要求，都将生成新版本并保留历史结果。")
+        st.caption("想调整安排，直接告诉下方的旅游助手。")
 
 
 st.session_state.setdefault("trip", None)
@@ -453,9 +524,9 @@ if submit and not checked.errors:
     with st.spinner("正在查询地点、安排路线并检查预算…"):
         if previous and previous["status"] != "blocked":
             trip = request("POST", f"/trips/{previous['id']}/revise",
-                {"base_version": previous["version"], "changes": constraints.model_dump(mode="json")})
+                {"base_version": previous["version"], "changes": constraints.model_dump(mode="json"), "autonomous": True})
         else:
-            trip = request("POST", "/trips", {"constraints": constraints.model_dump(mode="json"), "strategy": strategy})
+            trip = request("POST", "/trips", {"constraints": constraints.model_dump(mode="json"), "strategy": strategy, "autonomous": True})
     if trip:
         st.session_state.trip = trip
         st.session_state.sync_form = trip["constraints"]
@@ -468,230 +539,8 @@ if trip:
     st.caption("天气自动匹配行程涉及城市，仅展示今天起七天内已发布的预报；单独安排的往返交通，实际出行日期需另行确认。")
     with st.container(border=True):
         show_trip(trip, latest=True)
-    if trip.get("visit_checks") or trip.get("days"):
-        with st.expander("景点入场核验与预约确认"):
-            st.caption("常规开放规则不保证当天无临时闭馆；免费景点也可能要预约。这里只记录你确认的日期、人数和时段，不填写身份证或订单号。")
-            if not trip.get("visit_checks"):
-                st.info("该历史版本尚未进行景点入场核验，请点击重新核验。")
-            selected_check = st.selectbox("选择要核对的景点与日期", trip.get("visit_checks", []), index=None,
-                format_func=lambda v: f"{v['on_date']} · {v['city']} · {v['place_name']}", key="visit_check_choice")
-            if st.button("重新核验景点入场信息"):
-                accept_trip(request("POST", f"/trips/{trip['id']}/verify-visits", {"base_version": trip["version"]}))
-            st.caption("重新核验沿用原景点并重新算路，不调用语言模型；会保存新版本。")
-            if selected_check:
-                v = selected_check
-                st.write(admission_summary(v, trip["constraints"]))
-                st.caption({"official": "来源：景点官网", "provider": "来源：票务接口", "user": "来源：你自行核对的信息",
-                    "fixture": "来源：离线演示", "unknown": "尚未取得可用资料"}[v["authority"]])
-                if v.get("checked_at"):
-                    st.caption("资料核对时间：" + v["checked_at"] + "；超过24小时需重新核对。")
-                st.write(v.get("note", ""))
-                for source_url in v.get("source_urls", []):
-                    st.link_button("查看资料原文", source_url)
-                if v.get("booking_url"):
-                    st.link_button("查看预约说明", v["booking_url"])
-                with st.form("reservation_confirmation"):
-                    st.write("确认你已在官方渠道完成预约")
-                    a, b = st.columns(2)
-                    booked_start = a.time_input("已预约的入场时段开始", value=time(9))
-                    booked_end = b.time_input("已预约的入场时段结束", value=time(12))
-                    booked = st.checkbox(f"我已完成{v['on_date']}、{trip['constraints']['people']}人的预约")
-                    if st.form_submit_button("保存预约确认并重新检查"):
-                        if not booked or booked_start >= booked_end:
-                            st.warning("请先完成实际预约，并填写正确的入场时段后再确认。")
-                        else:
-                            confirmations = [r for r in trip["constraints"].get("reservations", [])
-                                if not (r["place_id"] == v["place_id"] and r["on_date"] == v["on_date"])]
-                            confirmations.append({"place_id": v["place_id"], "on_date": v["on_date"],
-                                "people": trip["constraints"]["people"], "entry_window": {"start": booked_start.isoformat(), "end": booked_end.isoformat()}})
-                            revise_choice(trip, {"reservations": confirmations})
-                with st.expander("补充你自行核对的入场资料"), st.form("manual_visit_information"):
-                        st.caption("按官网或电话核对结果填写；这些内容会标记为你提供的信息。未填的项目继续显示待核实。")
-                        is_closed = st.checkbox("该日期闭馆或暂停开放")
-                        a, b = st.columns(2)
-                        manual_start = a.time_input("核对到的开放开始", value=None)
-                        manual_end = b.time_input("核对到的闭馆时间", value=None)
-                        last_entry = st.time_input("核对到的停止入场时间（可留空）", value=None)
-                        reservation = st.selectbox("核对到的预约要求", ["未核对", "需要提前预约", "无需提前预约"])
-                        ticket = st.number_input("成人基础门票 / 元（免费填0）", min_value=0.0, value=None)
-                        source_url = st.text_input("资料原文链接（可选）")
-                        source_note = st.text_input("核对依据", placeholder="例如官网参观须知，或今天电话咨询的结果", max_chars=300)
-                        if st.form_submit_button("保存入场资料并重新检查"):
-                            if not source_note.strip() or not is_closed and (manual_start is None or manual_end is None or manual_start >= manual_end):
-                                st.warning("请填写核对依据；开放时还需填写同一天内有效的开放时段。")
-                            else:
-                                rules = [r for r in trip["constraints"].get("opening_rules", []) if not (r["place_id"] == v["place_id"] and r["on_date"] == v["on_date"])]
-                                rules.append({"place_id": v["place_id"], "on_date": v["on_date"], "closed": is_closed,
-                                    "start": manual_start.isoformat() if manual_start else None, "end": manual_end.isoformat() if manual_end else None,
-                                    "last_entry": last_entry.isoformat() if last_entry else None, "ticket_price": ticket,
-                                    "reservation_required": {"未核对": None, "需要提前预约": True, "无需提前预约": False}[reservation],
-                                    "source": source_note.strip(), "source_url": source_url.strip(),
-                                    "checked_at": datetime.now(ZoneInfo("Asia/Shanghai")).isoformat()})
-                                revise_choice(trip, {"opening_rules": rules})
-    if trip.get("revision_scope"):
-        st.caption(plain_text(trip["revision_scope"]["explanation"]))
-    if trip.get("clarifications"):
-        with st.form("confirm_places"):
-            st.subheader("确认具体地点")
-            confirmed = {}
-            for q in trip["clarifications"]:
-                st.write(q["query"] + "：" + plain_text(q["reason"]))
-                if q["options"]:
-                    choice = st.selectbox(q["query"] + "的候选地点", q["options"], index=None, key="confirm_" + q["key"],
-                        format_func=lambda p: f"{p['city']} · {p['name']} · {p.get('address', '')}")
-                    if choice:
-                        confirmed[q["key"]] = choice["id"]
-            if st.form_submit_button("确认地点并继续规划", type="primary"):
-                if len(confirmed) == len(trip["clarifications"]):
-                    revise_choice(trip, {"place_choices": {**trip["constraints"].get("place_choices", {}), **confirmed}})
-                else:
-                    st.warning("请选择每个候选；查无结果或名称冲突时，请先修改上方必去/排除地点。")
-    if trip.get("adjustments"):
-        with st.expander("选择一个调整方案", expanded=True):
-            st.caption("点击后才应用该方案并保存新版本；不会自动更改人数、必去地点或单价。")
-            for adjustment in trip["adjustments"]:
-                st.write(adjustment["title"])
-                st.caption(adjustment["impact"])
-                if st.button("选择此方案：" + adjustment["title"], key="adjust_" + adjustment["id"]):
-                    revise_choice(trip, adjustment_id=adjustment["id"])
-    with st.expander("版本、对比与恢复"):
-        versions = request("GET", f"/trips/{trip['id']}/versions") or []
-        picked_version = st.selectbox("查看版本", [v["version"] for v in versions],
-                                      format_func=lambda v: f"第{v}版", key="history_version")
-        a, b = st.columns(2)
-        if a.button("查看所选版本") and picked_version:
-            accept_trip(request("GET", f"/trips/{trip['id']}?version={picked_version}"))
-        if b.button("读取最新版"):
-            accept_trip(request("GET", f"/trips/{trip['id']}"))
-        if st.button("从当前版本复制为新旅行"):
-            accept_trip(request("POST", f"/trips/{trip['id']}/clone", {"version": trip["version"]}))
-        if st.button("与当前版本对比") and picked_version:
-            diff = request("GET", f"/trips/{trip['id']}/compare?from_version={picked_version}&to_version={trip['version']}")
-            if diff:
-                st.write(f"第{diff['from_version']}版 → 第{diff['to_version']}版")
-                st.write("全团费用估算：" + constraint_text("budget", diff["budget_before"]) + " → " +
-                         constraint_text("budget", diff["budget_after"]))
-                labels = {"origin": "出发地", "cities": "目的地", "start_date": "开始日期", "days": "旅行天数",
-                    "people": "人数", "budget": "全团总预算", "interests": "兴趣", "must_visit": "必去地点", "excluded": "排除地点",
-                    "transport": "交通方式", "return_to_origin": "计入返程", "accessibility_required": "无障碍需求", "rooms": "房间数",
-                    "hotel_per_room_night": "每间每晚住宿预算", "food_per_person_day": "每人每天餐饮预算",
-                    "ticket_per_person_visit": "每人每处门票预算", "pricing_note": "费用说明", "arrival_time": "首日到达",
-                    "departure_time": "末日离开", "daily_start": "每日开始", "daily_end": "每日结束", "visit_minutes": "每处游览分钟数",
-                    "day_rules": "分日时段与节奏", "opening_rules": "开放与闭馆说明", "reservations": "你确认的预约", "place_choices": "候选确认",
-                    "bindings": "地点名称映射", "anchors": "酒店与车站位置", "day_place_ids": "指定活动", "optimize_routes": "路线顺序比较",
-                    "indoor_sources": "室内属性依据"}
-                labels.update(lodging_addresses="酒店或住宿地址", daily_end_scope="结束时间含义", home_transport_scope="往返交通安排方式")
-                rows = [{"需求项目": labels.get(r["field"], "其他需求"), "修改前": constraint_text(r["field"], r["before"]),
-                         "修改后": constraint_text(r["field"], r["after"])} for r in diff["constraints"]]
-                if rows:
-                    st.dataframe(rows, hide_index=True, width="stretch")
-                else:
-                    st.caption("两版本的旅行需求没有变化。")
-                for changed_day in diff["days"]:
-                    st.write(f"第{changed_day['day']}天的变化")
-                    rows = [{"版本": label, "时间": f"{e['start']}–{e['end']}", "活动": e["title"],
-                             "费用": f"{e['cost']['low']}–{e['cost']['high']}"}
-                            for label, data in [("之前", changed_day["before"]), ("之后", changed_day["after"])]
-                            if data for e in data["events"]]
-                    st.dataframe(rows, hide_index=True, width="stretch")
-    with st.expander("酒店、车站与开放信息（可选）"):
-        st.caption("选择已查询的地点后参与实际接驳算路。演示地点不是酒店房源或实际车次。开放/室内说明由你提供，系统不会冒充已核实。")
-        saved_anchors = trip["constraints"].get("anchors", {})
-        if saved_anchors:
-            st.write("当前接驳位置", saved_anchors)
-            if st.button("清除已选酒店与车站，按城市中心重新估算"):
-                revise_choice(trip, {"anchors": {}})
-        search_city = st.text_input("查询城市", value=trip["constraints"]["cities"][0] if trip["constraints"]["cities"] else "广州")
-        category = st.selectbox("地点类型", ["hotel", "station", "attraction"],
-                                format_func=lambda k: {"hotel": "酒店", "station": "车站", "attraction": "景点"}[k])
-        search_query = st.text_input("地点名称", placeholder="输入酒店、车站或景点名称")
-        if st.button("查询地点候选") and search_city.strip() and search_query.strip():
-            st.session_state.point_search = request("GET", f"/places/search?city={quote(search_city)}&query={quote(search_query)}&category={category}")
-        found = st.session_state.get("point_search") or {}
-        options = found.get("options", [])
-        point = st.selectbox("选择已查询地点", options, index=None,
-                             format_func=lambda p: f"{p['city']} · {p['name']} · {p.get('address', '')}")
-        if found and not options:
-            st.info("没有查到符合城市与类型的地点，请补充名称后重新查询。")
-        if point and point["category"] in {"hotel", "station"}:
-            purpose = st.selectbox("位置用途", ["hotel_id"] if point["category"] == "hotel" else
-                ["arrival_station_id", "departure_station_id"],
-                format_func=lambda k: {"hotel_id": "当日出发与住宿位置", "arrival_station_id": "到达车站", "departure_station_id": "出发车站"}[k])
-            if st.button("使用此位置重新算路"):
-                anchors = trip["constraints"].get("anchors", {})
-                changes = {"anchors": {**anchors, point["city"]: {**anchors.get(point["city"], {}), purpose: point["id"]}}}
-                if purpose == "hotel_id":
-                    changes["lodging_addresses"] = {city: address for city, address in trip["constraints"].get("lodging_addresses", {}).items()
-                                                    if city != point["city"]}
-                revise_choice(trip, changes)
-        if point and point["category"] == "attraction":
-            with st.form("opening_information"):
-                st.write(point["name"])
-                source = st.text_input("开放或室内属性的依据说明", max_chars=300)
-                indoor = st.checkbox("我根据上述依据确认该地点有室内活动空间")
-                apply_opening = st.checkbox("同时设置该地点某日的开放时间")
-                on_date = st.date_input("适用日期", value=date.fromisoformat(trip["constraints"]["start_date"]) if trip["constraints"]["start_date"] else TODAY)
-                closed = st.checkbox("该日闭馆")
-                a, b = st.columns(2)
-                opened = a.time_input("开放开始", value=time(9))
-                closing = b.time_input("开放结束", value=time(17))
-                if st.form_submit_button("保存提供的信息并重新核验"):
-                    if not source.strip() or not (indoor or apply_opening):
-                        st.warning("请填写依据并选择需要设置的信息。")
-                    else:
-                        changes = {}
-                        if indoor:
-                            changes["indoor_sources"] = {**trip["constraints"].get("indoor_sources", {}), point["id"]: source.strip()}
-                        if apply_opening:
-                            rules = [r for r in trip["constraints"].get("opening_rules", [])
-                                     if not (r["place_id"] == point["id"] and r["on_date"] == str(on_date))]
-                            rules.append({"place_id": point["id"], "on_date": str(on_date), "closed": closed,
-                                          "start": opened.isoformat(), "end": closing.isoformat(), "source": source.strip()})
-                            changes["opening_rules"] = rules
-                        revise_choice(trip, changes)
-    if trip["days"]:
-        with st.expander("分日修改与雨天替换"):
-            st.caption("选择修改范围并重新核验；未影响日期会保留。全局约束变化时会说明扩大重算范围。")
-            selected_day = st.selectbox("选择修改哪一天", trip["days"], format_func=lambda d: f"第{d['day']}天 · {d['date']} · {d['city']}")
-            all_visits = [e for d in trip["days"] for e in d["events"] if e["kind"] == "visit"]
-            protected = {b["place_id"] for b in trip["constraints"].get("bindings", []) if b["field"] == "must_visit"}
-            visits = [e for e in selected_day["events"] if e["kind"] == "visit" and e["place_id"] not in protected]
-            used_ids = {e["place_id"] for e in all_visits}
-            replacement_options = [p for p in selected_day.get("indoor_options", []) if p["id"] not in used_ids]
-            old = st.selectbox("要替换的可选活动", visits, index=None, format_func=lambda e: e["title"])
-            new = st.selectbox("有依据的室内候选", replacement_options, index=None,
-                               format_func=lambda p: p["name"] + " · " + ("用户提供属性" if p.get("indoor_evidence_id") else "演示数据分类"))
-            if st.button("应用室内替换并重新算路", disabled=not (old and new)):
-                day_ids = [new["id"] if e["place_id"] == old["place_id"] else e["place_id"]
-                           for e in selected_day["events"] if e["kind"] == "visit"]
-                revise_choice(trip, {"day_place_ids": {**trip["constraints"].get("day_place_ids", {}), selected_day["day"]: day_ids}},
-                              target_day=selected_day["day"])
-            with st.form("scoped_time"):
-                period = st.selectbox("修改活动范围", ["day", "afternoon"], format_func=lambda p: "整天" if p == "day" else "只修改下午")
-                a, b = st.columns(2)
-                scope_start = a.time_input("修改后的活动开始", value=time(13))
-                scope_end = b.time_input("修改后的活动结束", value=time(18))
-                if st.form_submit_button("应用分日时间修改"):
-                    old_rules = trip["constraints"].get("day_rules", [])
-                    current_rule = next((r for r in old_rules if r["day"] == selected_day["day"]), None)
-                    rules = [r for r in old_rules if r["day"] != selected_day["day"]]
-                    rule = {"day": selected_day["day"], "start": scope_start.isoformat(),
-                            "end": scope_end.isoformat(), "period": period}
-                    if current_rule and current_rule.get("visit_minutes") is not None:
-                        rule["visit_minutes"] = current_rule["visit_minutes"]
-                    rules.append(rule)
-                    revise_choice(trip, {"day_rules": rules}, target_day=selected_day["day"], target_period=period)
-    with st.container(border=True):
-        st.subheader("进一步修改")
-        st.caption("基于已生成的方案，只改你明确要求的内容。上方表单的改动请点击“重新生成行程”。")
-        with st.form("text_revision", border=False):
-            instruction = st.text_area("修改要求", placeholder="例如：预算改成3000元；排除广州塔。",
-                                       max_chars=3000, height=80, key="revision_instruction")
-            revise = st.form_submit_button("提交修改", type="primary")
-    if st.session_state.revision_notes:
-        with st.expander("文字修改记录"):
-            for item in st.session_state.revision_notes:
-                st.write(item)
+    show_assistant(trip)
+
 else:
     st.markdown("""<div class="travel-intro-strip">
       <span class="travel-intro-symbol">✧</span><span class="travel-intro-copy">
@@ -700,23 +549,3 @@ else:
     </div>""", unsafe_allow_html=True)
     if health and health["mode"] == "demo":
         st.caption("离线演示仅支持广州、深圳、珠海；地点、路线和天气为示例，费用为估算。")
-    revise = False
-
-if revise:
-    prompt = instruction.strip()
-    previous = st.session_state.trip
-    if prompt:
-        with st.spinner("正在根据修改要求重新规划…"):
-            if previous["status"] != "blocked":
-                updated = request("POST", f"/trips/{previous['id']}/revise",
-                    {"base_version": previous["version"], "instruction": prompt})
-            else:
-                updated = request("POST", "/trips", {"prompt": prompt, "strategy": strategy})
-        if updated:
-            st.session_state.trip = updated
-            st.session_state.sync_form = updated["constraints"]
-            note = "输入含敏感信息或越权操作，原文未保留" if blocked_input(prompt) else prompt
-            st.session_state.revision_notes.append(f"第{updated['version']}版：{note}")
-            st.rerun()
-    else:
-        st.warning("请先输入要修改的内容。")

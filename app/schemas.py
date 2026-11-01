@@ -236,6 +236,7 @@ class TripRequest(Model):
     prompt: str = Field(default="", max_length=3000)
     constraints: Constraints = Field(default_factory=Constraints)
     strategy: Literal["single", "multi"] = "multi"
+    autonomous: bool = False
 
     @field_validator("prompt")
     @classmethod
@@ -251,6 +252,7 @@ class RevisionRequest(Model):
     adjustment_id: str | None = None
     target_day: int | None = Field(default=None, ge=1, le=MAX_TRIP_DAYS)
     target_period: Literal["day", "afternoon"] = "day"
+    autonomous: bool = False
 
     @field_validator("changes")
     @classmethod
@@ -284,6 +286,7 @@ class Place(Model):
     address: str = ""
     category: Literal["attraction", "hotel", "station"] = "attraction"
     indoor_evidence_id: str | None = None
+    photos: list[str] = Field(default_factory=list, max_length=4)
 
     @model_validator(mode="after")
     def coordinates(self):
@@ -355,6 +358,7 @@ class Event(Model):
     route_segments: list[str] = Field(default_factory=list)
     route_steps: list[RouteStep] = Field(default_factory=list)
     is_return: bool = False
+    photos: list[str] = Field(default_factory=list, max_length=4)
 
 
 class DayWeather(Model):
@@ -391,6 +395,7 @@ class DayPlan(Model):
     events: list[Event]
     overnight_city: str | None = None
     hotel_options: list[Place] = Field(default_factory=list)
+    suggested_stay: Place | None = None
     weather: str
     weather_details: list[DayWeather] = Field(default_factory=list)
     departure_note: str = ""

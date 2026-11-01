@@ -61,6 +61,13 @@ def record(evidence_dir):
     supplier = json.loads(supplier_path.read_text(encoding="utf-8")) if supplier_path.is_file() else None
     branch_path = evidence_dir / "identity-live-check.json"
     branch = json.loads(branch_path.read_text(encoding="utf-8")) if branch_path.is_file() else None
+    assistant_path = evidence_dir / "assistant-live-check.json"
+    assistant = json.loads(assistant_path.read_text(encoding="utf-8")) if assistant_path.is_file() else None
+    photos_path = evidence_dir / "photos-live-check.json"
+    photos = json.loads(photos_path.read_text(encoding="utf-8")) if photos_path.is_file() else None
+    for probe in (assistant, photos):
+        if probe and not probe.get("passed"):
+            raise ValueError("Current assistant/photo live probe did not pass")
     snapshot = {"checked_at": datetime.now(ZoneInfo("Asia/Shanghai")).isoformat(),
         "pytest": {**counts, "report_sha256": digest(evidence_dir / "pytest.xml")},
         "ruff": "passed", "pip_check": "passed", "offline": evaluations,
@@ -81,6 +88,10 @@ def record(evidence_dir):
         "hotel_identity_probe": {"scope": branch["scope"], "identity_confirmed": branch["identity_confirmed"],
             "amap_calls": branch.get("amap_calls", 0), "meituan_calls": branch.get("meituan_calls", 0),
             "report_sha256": digest(branch_path)} if branch else None,
+        "assistant_live_probe": {"passed": True, "scope": assistant["scope"],
+            "report_sha256": digest(assistant_path)} if assistant else None,
+        "photos_live_probe": {"passed": True, "scope": photos["scope"],
+            "report_sha256": digest(photos_path)} if photos else None,
         "delivery": {"type": "source_only_using_existing_dependencies", "fresh_machine_install": "not_run",
                      "license": "not_selected", "published": False},
         "docker_runtime": "not_run", "cloud_ci": "not_run", "independent_learning": "not_evaluated",
@@ -97,7 +108,9 @@ def record(evidence_dir):
 | 规范与依赖 | Ruff、pip check 通过 | 使用当前 Windows 虚拟环境 |
 | 离线场景 | v3 {evaluations['v3']['passed']}/{evaluations['v3']['total']}；v2 {evaluations['v2']['passed']}/{evaluations['v2']['total']} | 模型调用为零；已知回归，非盲测 |
 | 发布包界面 | 独立进程解压后运行 AppTest，CSS 加载、JPG 嵌入通过 | 复用本机依赖，未在全新机器安装 |
-| 浏览器交互 | {'本机 Chrome 实测' + str(len(browser['checks'])) + '项通过，保存错误和有效表单截图' if browser else '本轮未执行'} | {'独立演示API与数据库，不调用真实模型、地图或票务接口' if browser else 'AppTest不替代浏览器验收'} |
+| 浏览器交互 | {'本机 Chrome 实测' + str(len(browser['checks'])) + '项通过，保存界面截图' if browser else '本轮未执行'} | {browser['scope'] if browser else 'AppTest不替代浏览器验收'} |
+| 旅游助手真实意图 | {'咨询与修改两次真实模型意图通过' if assistant else '本轮未执行'} | 修改执行使用演示规划角色和地图；不代表真实路线全链路验收 |
+| 对应地点实景 | {'广东省博物馆、白天鹅宾馆的高德实景照片取得并加载通过' if photos else '本轮未执行'} | 两处小样本；不保证所有地点有照片，未替代照片使用授权审核 |
 | 真实接口历史 | 2026-10-15 广州两日生成、预算修改、历史及导出；2026-10-16 武汉酒店地址定位有通过记录 | 当前源码有后续修改，本轮未重跑这些历史端到端样本 |
 | 美团真实查询 | {'FastAPI 查询、保存、读取和导出通过' if meituan and meituan['passed'] else '本轮未重测；此前有通过记录' if earlier_meituan and earlier_meituan['passed'] else '本轮未通过'} | 地图/规划角色为隔离夹具；仅美团 CLI 真实请求，不代表真实路线或票务库存验收 |
 | 景点参考试查 | {str(supplier['queries']) + '次只读查询取得回复，景点参考匹配通过' if supplier else '本轮无新增景点试查'} | {'酒店分店名称和金额有差异，可靠房价未通过；路线上下文为夹具，没有真实模型/地图全链路验收' if supplier else '酒店分店试查另列下行'} |
@@ -107,9 +120,9 @@ def record(evidence_dir):
 | Docker、云端 CI | 本轮未运行 | 配置不等于运行证据 |
 | Git 与外发 | 本地基线和修复提交；ZIP 清单记录最终提交与各文件 SHA256 | 无外部推送；未选开源许可证；不能伪称已有远端历史或云端 CI 成绩 |
 
-本轮调整：相邻步行合并，保存真实步行段起终点并添加高德步行链接；费用明细移除原始来源清单和重复说明。酒店分店结合完整地址与唯一高德地点确认，地址不足或候选歧义时不绑定报价。详见 [步行导航与分店](NAVIGATION_AND_BRANCHES.md)。表单、历史、资料整合、往返交通及景点核验继续纳入完整回归。
+本轮调整：删除面向客户的手动方案、版本、酒店/车站、分日和预约操作面板，统一由“旅游助手”接收意见、回答咨询并执行核验后的修改；对话持久保存并防止重复发送重复修改。自主模式自动选择已查询住宿位置参与算路，景点和住宿下方展示对应地点的实景照片。详见 [旅游助手与照片](TOUR_ASSISTANT.md)。此前表单、历史、分店、步行导航、往返交通及景点核验继续纳入完整回归。
 
-{'浏览器检查使用独立 Chrome。历史和参考数据为隔离演示夹具；步行链接弹窗参数通过，外部高德页面由测试拦截，手机APP实际调起未验收。' if browser else '本轮没有浏览器截图验收。'}
+{'浏览器检查使用独立 Chrome、演示 API 和数据库；照片使用另行真实取得的对应地点缓存作视觉验收，不代表真实路线验收。' if browser else '本轮没有浏览器截图验收。'}
 
 证据目录：`{evidence_dir.relative_to(ROOT).as_posix() if evidence_dir.is_absolute() else evidence_dir.as_posix()}`。源码和配置哈希保存在机器摘要中；文档与摘要自身不纳入该集合以避免自引用，发布包清单另外覆盖它们。
 

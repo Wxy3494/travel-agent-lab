@@ -394,7 +394,7 @@ async def materialize(c, selection, facts, provider, previous=None, reuse_days=N
                                 map_url="https://uri.amap.com/marker?" + urlencode({"position": place.location,
                                                                                   "name": place.name, "src": "travel-agent-lab"}),
                                 cost=cost, note=ticket_note,
-                                start_location=place.location, end_location=place.location))
+                                start_location=place.location, end_location=place.location, photos=place.photos))
             items.append(BudgetItem(category=f"{place.name} 门票", quantity=c.people, unit="人次",
                                     unit_price=unit_price, total=cost, evidence_id=ticket_ev,
                                     day=chosen.day, event_start=clock(cursor)))
@@ -429,6 +429,7 @@ async def materialize(c, selection, facts, provider, previous=None, reuse_days=N
         days.append(DayPlan(day=chosen.day, date=today, city=chosen.city, events=events,
                             overnight_city=chosen.city if chosen.day < c.days else None,
                             hotel_options=local.hotels if chosen.day < c.days else [],
+                            suggested_stay=anchors.get(chosen.city, {}).get("hotel_id") if chosen.day < c.days else None,
                             weather=weather, alternative=alternative, reason=chosen.reason,
                             weather_details=weather_details, departure_note=departure_note,
                             travel_minutes=duration_minutes, route_comparison=comparison,
