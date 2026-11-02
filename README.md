@@ -2,31 +2,50 @@
 
 面向国内自由行的本地旅行规划助手。首页填写出发地、目的地、日期、天数、人数和全团预算，Agent负责规划路线与住宿；生成后通过“旅游助手”咨询或提出修改，无需手动编辑方案。每日安排结合对应地点实景照片、交通、住宿和费用，可导出Markdown。
 
-**当前状态（2026-11-01）：以[统一验收摘要](docs/ACCEPTANCE.md)及其[源码哈希快照](docs/acceptance_snapshot.json)为准。** 旅游助手支持即时回应、处理进度、自动重排和具体变化说明；“第二天轻松点，少走路”已有Chrome交互、虚构广州样例和经批准的深圳行程副本真实模型及高德验证。原始行程保留，入场信息未知仍为待核实；本轮停用美团，未验收实时房价房态、实际预约、手机导航及Docker/CI。[旅游助手说明](docs/TOUR_ASSISTANT.md)。
+**本次公开上传（2026-11-02）：** 335 项离线回归通过，Ruff、依赖检查通过，离线场景 v3 30/30、扩展 v2 10/10；详见[上传与验证记录](docs/GITHUB_RELEASE.md)。
 
-## 本机启动
+**功能验收状态（2026-11-01）：以[统一验收摘要](docs/ACCEPTANCE.md)及其[源码哈希快照](docs/acceptance_snapshot.json)为准。** 旅游助手支持即时回应、处理进度、自动重排和具体变化说明；“第二天轻松点，少走路”已有Chrome交互、虚构广州样例和经批准的深圳行程副本真实模型及高德验证。原始行程保留，入场信息未知仍为待核实；本轮停用美团，未验收实时房价房态、实际预约、手机导航及Docker/CI。[旅游助手说明](docs/TOUR_ASSISTANT.md)。
 
-唯一项目目录为 `D:\zuoye\AI学习\多 Agent 旅行规划系统`，现有 `.venv` 已可运行，不需要重建项目。
+## 项目介绍
 
-**日常使用：在项目文件夹中双击 `启动行旅.cmd`。** 启动器会检查并在后台启动API与网页，服务就绪后自动打开默认浏览器，无需输入命令。已有服务会直接复用。无需安装窗口组件；启动失败会弹出提示，日志保存在已忽略的 `.local/`。关闭网页后后台服务仍可复用。
+**行旅（Travel Agent Lab）** 是一个基于 AutoGen 的多 Agent 旅行规划项目，将自然语言需求转成可保存、可修改、可检查的结构化行程。它面向个人自由行演示，重点展示资料查询、行程规划、独立审核和代码审计之间的协作。
 
-以下终端方式供开发、配置与排错使用：
+- **多 Agent 协作**：真实模式下，资料 Agent 调用只读查询工具，规划 Agent 从已查询地点中选择安排，审核 Agent 提出意见；Python 控制器显式调度，最多两轮返工。
+- **自然语言修改**：支持“预算改成3000元”“第二天轻松点，少走路”等请求，流式展示回应与处理进度，并保存修改后的版本。
+- **约束与证据检查**：用 Pydantic 校验输入，以独立代码重算预算、人数、间夜、日期和交通时间，检查地点来源与活动冲突；未知信息保留待核实状态。
+- **行程展示**：提供逐日活动、交通与住宿参考、天气、可取得的对应地点照片和地图导航链接，支持 Markdown 导出。
+- **历史与并发保护**：SQLite 保存行程和对话，支持版本比较、从旧版复制，以及 `base_version` 冲突保护和聊天重试幂等。
+- **离线复现与基线**：默认 demo 模式无需 API Key，以人工样例和规则运行；live 模式接入 AutoGen、DeepSeek 和高德，另提供 single/multi 策略及评测入口。
 
-两个 PowerShell 终端分别执行：
+| 层次 | 技术与职责 |
+|---|---|
+| 界面与接口 | Streamlit、FastAPI：收集需求、展示行程、提供 HTTP API |
+| Agent 与模型 | AutoGen AgentChat 0.7.5、DeepSeek 兼容接口：提取、查询、规划与审核 |
+| 业务与存储 | Python、Pydantic v2、SQLite：约束、独立审计、版本与事务 |
+| 数据与验证 | HTTPX、高德适配、pytest、Ruff、离线评测与 GitHub Actions 配置 |
 
-```powershell
-cd 'D:\zuoye\AI学习\多 Agent 旅行规划系统'
-.\scripts\start.ps1 api
+```mermaid
+flowchart LR
+    U[用户需求 / 文字修改] --> W[Streamlit / FastAPI]
+    W --> C[Python 控制器]
+    C --> R[资料 Agent + 只读工具]
+    R --> P[规划 Agent]
+    P --> A[独立代码审计 + 审核 Agent]
+    A -->|可修复问题：最多两轮| P
+    A --> D[(SQLite 行程版本)]
+    D --> O[展示 / 比较 / 导出]
 ```
 
+图中 Agent 链路对应 live 模式；demo 使用规则与测试 Provider。现有真实接口验收仅覆盖文档列明的小样本，不代表全国旅行、实时房价房态或票务库存已验证。项目不执行预订或付款；更多实现细节见[技术架构](docs/ARCHITECTURE.md)。
+
+## 快速开始
+
+建议使用 Python 3.12。克隆后在项目根目录执行下方安装命令；默认 demo 模式无需配置密钥。
+
 ```powershell
-cd 'D:\zuoye\AI学习\多 Agent 旅行规划系统'
-.\scripts\start.ps1 ui
+git clone https://github.com/Wxy3494/travel-agent-lab.git
+cd travel-agent-lab
 ```
-
-打开 [旅行规划页面](http://127.0.0.1:8501) 或 [API 文档](http://127.0.0.1:8000/docs)。已运行时直接访问，避免重复启动；终端 `Ctrl+C` 停止对应服务。默认仅绑定本机地址，无登录鉴权，适用于个人本地演示。更新源码或模式后需重启API和UI，以加载新模型结构；直接复用旧进程不会保证加载新增字段。
-
-启动脚本会检测对应端口的健康服务。若提示 `already running`，直接打开页面即可，脚本不会重复启动进程。`Port 8501 is not available` 或8000端口绑定错误通常表示已经有服务监听该端口。
 
 从干净的 Python 3.12 环境复现（项目声明支持 3.11～3.13，当前实测只有 Windows Python 3.12.14）：
 
@@ -38,6 +57,26 @@ python -m venv .venv
 ```
 
 `requirements.lock` 是当前已测试环境的完整固定版本清单，未包含安装包哈希；它锁定版本，不保证所有平台均可安装。AutoGen AgentChat / Ext 固定为 **0.7.5**。
+
+**日常使用：在项目文件夹中双击 `启动行旅.cmd`。** 启动器会检查并在后台启动API与网页，服务就绪后自动打开默认浏览器，无需输入命令。已有服务会直接复用。无需安装窗口组件；启动失败会弹出提示，日志保存在已忽略的 `.local/`。关闭网页后后台服务仍可复用。
+
+以下终端方式供开发、配置与排错使用：
+
+两个 PowerShell 终端分别执行：
+
+```powershell
+# 在项目根目录执行
+.\scripts\start.ps1 api
+```
+
+```powershell
+# 在项目根目录执行
+.\scripts\start.ps1 ui
+```
+
+打开 [旅行规划页面](http://127.0.0.1:8501) 或 [API 文档](http://127.0.0.1:8000/docs)。已运行时直接访问，避免重复启动；终端 `Ctrl+C` 停止对应服务。默认仅绑定本机地址，无登录鉴权，适用于个人本地演示。更新源码或模式后需重启API和UI，以加载新模型结构；直接复用旧进程不会保证加载新增字段。
+
+启动脚本会检测对应端口的健康服务。若提示 `already running`，直接打开页面即可，脚本不会重复启动进程。`Port 8501 is not available` 或8000端口绑定错误通常表示已经有服务监听该端口。
 
 ## 填表生成，文字修改
 
@@ -119,9 +158,9 @@ Copy-Item .env.example .env
 
 ## Docker 与公开准备
 
-Dockerfile、Compose 和离线 CI 配置已提供，**容器构建和运行尚未验收**。有 Docker 环境后执行 `docker compose config`、`docker compose up --build`，访问 health 与页面，再完成单城/跨城/重启持久化检查。CI 配置未推送，也没有云端运行结果。
+Dockerfile、Compose 和离线 GitHub Actions 配置已提供，**容器构建和运行尚未验收**。有 Docker 环境后执行 `docker compose config`、`docker compose up --build`，访问 health 与页面，再完成单城/跨城/重启持久化检查。公开仓库的实际 CI 结果以 [Actions 页面](https://github.com/Wxy3494/travel-agent-lab/actions) 为准；历史本机验收不代表云端运行成功。
 
-SQLite 运行数据位于 `data/runtime/`；密钥、运行记录、虚拟环境和评测原始结果均在忽略列表。执行 `python -m scripts.package_public` 生成只含源码、测试、配置样例和文档的本地 ZIP。本地 Git 已保存修复前基线与本次修复，ZIP 清单记录提交与 SHA256；另交付 history.bundle 供还原历史。打包不会上传、推送或发布；尚未选择开源许可证。
+SQLite 运行数据位于 `data/runtime/`；密钥、运行记录、虚拟环境和评测原始结果均在忽略列表。执行 `python -m scripts.package_public` 生成只含源码、测试、配置样例和文档的本地 ZIP。本地 Git 已保存修复前基线与本次修复，ZIP 清单记录提交与 SHA256；另交付 history.bundle 供还原历史。打包命令仅生成本地文件；公开仓库位于 [Wxy3494/travel-agent-lab](https://github.com/Wxy3494/travel-agent-lab)。尚未选择开源许可证。
 
 ## 文档地图
 
