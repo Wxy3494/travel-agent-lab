@@ -24,3 +24,10 @@
 本次没有调用付费模型、地图或美团接口，没有新增真实旅行端到端、Docker、移动端或负载验收。功能与历史真实小样本的范围仍以 [2026-11-01 验收摘要](ACCEPTANCE.md) 为准；该摘要的“无外部推送”等内容描述其记录时的历史状态。
 
 GitHub 云端检查须查看 [Actions](https://github.com/Wxy3494/travel-agent-lab/actions) 的实际结果。本机测试结果不能替代云端运行记录。扫描未发现匹配项仅是上述检查范围内的结论。
+
+## 首次云端检查与跨平台发布修复
+
+首次 [GitHub Actions 运行](https://github.com/Wxy3494/travel-agent-lab/actions/runs/41383186733) 在 Ubuntu / Python 3.12.15 上完成安装、依赖检查、Ruff 和 335 项测试（46.76 秒），随后冻结样例字节哈希检查失败。
+
+原因是 Git 的全局文本换行规范将三份原本按 CRLF 冻结的 JSON 样例转换成 LF。发布修复在 `.gitattributes` 中为 `evals/cases.json`、`evals/cases-v3.json`、`evals/extensions-v2.json` 设置 `-text`，使 Git 保存原始字节。三份文件恢复为既有清单所记录的 SHA256；JSON 数据、既有哈希清单、评测协议与业务代码均不变。
+

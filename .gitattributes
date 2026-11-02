@@ -2,3 +2,8 @@
 *.jpg binary
 *.png binary
 *.zip binary
+
+# Frozen fixtures use byte-level hashes; preserve their original line endings.
+evals/cases.json -text
+evals/cases-v3.json -text
+evals/extensions-v2.json -text
