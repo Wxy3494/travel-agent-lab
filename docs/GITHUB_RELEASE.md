@@ -29,5 +29,5 @@ GitHub 云端检查须查看 [Actions](https://github.com/Wxy3494/travel-agent-l
 
 首次 [GitHub Actions 运行](https://github.com/Wxy3494/travel-agent-lab/actions/runs/41383186733) 在 Ubuntu / Python 3.12.15 上完成安装、依赖检查、Ruff 和 335 项测试（46.76 秒），随后冻结样例字节哈希检查失败。
 
-原因是 Git 的全局文本换行规范将三份原本按 CRLF 冻结的 JSON 样例转换成 LF。发布修复在 `.gitattributes` 中为 `evals/cases.json`、`evals/cases-v3.json`、`evals/extensions-v2.json` 设置 `-text`，使 Git 保存原始字节。三份文件恢复为既有清单所记录的 SHA256；JSON 数据、既有哈希清单、评测协议与业务代码均不变。
+原因是 Git 的全局文本换行规范将原本按 CRLF 冻结的 `cases-v3.json` 转换成 LF，另外两份样例没有发生字节变化。发布修复在 `.gitattributes` 中为 `evals/cases.json`、`evals/cases-v3.json`、`evals/extensions-v2.json` 设置 `-text`，使 Git 保存原始字节。使用重新规范化暂存将 v3 样例原始字节纳入 Git，并逐份核对暂存区：三份文件均与既有清单所记录的 SHA256 一致；JSON 数据、既有哈希清单、评测协议与业务代码均不变。
 
